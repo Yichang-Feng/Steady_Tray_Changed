@@ -157,8 +157,19 @@ if __name__ == "__main__":
         
         # Close the viewer automatically after simulation_duration wall-seconds.
         start = time.time()
+        last_push_time = 0.0
         while viewer.is_running() and time.time() - start < config.simulation_duration:
             step_start = time.time()
+            current_sim_time = time.time() - start
+
+            # --- 添加推力干扰：每隔 4 秒推一次 ---
+            if current_sim_time - last_push_time > 3.0:
+                # 瞬间给 Y 轴（侧向）增加 0.5 m/s 的速度
+                d.qvel[1] += 0.5
+                # 如果想往前推，可以修改 X 轴： d.qvel[0] += 0.5
+                print(f"[{current_sim_time:.2f}s] Pushed!! Current velocity after push: {d.qvel[0]:.2f} (forward), {d.qvel[1]:.2f} (sideways)")
+                last_push_time = current_sim_time
+            # ------------------------------------
             tau = pd_control(target_dof_pos, d.qpos[7:7 + config.num_actions], config.kps, np.zeros_like(config.kds), d.qvel[6:6 + config.num_actions], config.kds)
             d.ctrl[:] = tau
             # mj_step can be replaced with code that also evaluates

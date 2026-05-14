@@ -9,3 +9,6 @@
 *.json
 !settings.json
 !launch.json
+# 忽略所有的 PyTorch 模型权重文件
+*.pt
+*.yaml

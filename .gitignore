@@ -81,3 +81,4 @@ datasets
 # Allow exported and model folder
 !**/exported/*
 !**/model/*
+*.pt
