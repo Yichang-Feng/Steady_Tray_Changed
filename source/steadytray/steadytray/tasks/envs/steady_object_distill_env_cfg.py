@@ -27,7 +27,7 @@ class DistillSceneCfg(ObjectSceneCfg):
 @configclass
 class DistillObservationsCfg(ObjectObservationsCfg):
     """Configuration for observations in the steady object distillation environment."""
-    
+    teacher_encoder: ObjectObservationsCfg.EncoderCfg = ObjectObservationsCfg.EncoderCfg()
     @configclass
     class StudentEncoderCfg(ObsGroup):
         """Configuration for student encoder observations."""

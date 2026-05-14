@@ -52,7 +52,7 @@ class Distillation:
         loss_type="mse",
         device="cpu",
         # DAgger parameters
-        use_dagger=False,
+        use_dagger=True,
         dagger_beta_start=1.0,
         dagger_beta_end=0.0,
         dagger_decay_steps=1000,

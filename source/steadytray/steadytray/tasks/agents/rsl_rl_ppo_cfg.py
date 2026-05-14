@@ -92,7 +92,7 @@ class RslRlAdapterDistillationAlgorithmCfg(RslRlDistillationAlgorithmCfg):
     """Maximum gradient norm for clipping."""
     
     # DAgger (Dataset Aggregation) parameters
-    use_dagger: bool = False
+    use_dagger: bool = True
     """Whether to use DAgger for distillation warm-up."""
     dagger_beta_start: float = 1.0
     """Initial probability of using teacher actions (β). 1.0 = always teacher."""
@@ -273,7 +273,7 @@ class G1AdapterDistillationRunnerCfg(RslRlOnPolicyRunnerCfg):
     # Uses same config as AdaptedActorCritic, just changes class_name to AdaptedStudentTeacher
     policy = RslRlAdaptedActorCriticCfg(
         class_name="AdaptedStudentTeacher",
-        adapter_type="residual",  # "film" for FiLM adapters, "residual" for residual action adapter
+        adapter_type="film",  # "film" for FiLM adapters, "residual" for residual action adapter
         init_noise_std=1e-3,
         
         # Frozen base actor architecture (must match pre-trained model)
@@ -310,7 +310,7 @@ class G1AdapterDistillationRunnerCfg(RslRlOnPolicyRunnerCfg):
         embedding_loss_coef=1.0,
         action_loss_coef=1.0,
         loss_type="mse",
-        use_dagger=False,
+        use_dagger=True,
         dagger_beta_start=1.0,
         dagger_beta_end=0.0,
         dagger_decay_steps=500,
