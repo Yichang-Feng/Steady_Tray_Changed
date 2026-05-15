@@ -7,6 +7,7 @@ import mujoco
 import numpy as np
 import torch
 from collections import deque
+import pygame
 
 torch.set_num_threads(1)
 torch.set_num_interop_threads(1)
@@ -78,6 +79,61 @@ def get_object_pose(data, model, object_half_height=0.05):
     
     return object_obs
 
+# 手柄控制器类
+class GamepadController:
+    def __init__(self, max_vx=1.0, max_vy=0.5, max_yaw=1.0, deadzone=0.1):
+        # 强制 SDL2 库在没有窗口焦点时，依然监听手柄事件
+        os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
+        os.environ["SDL_VIDEODRIVER"] = "dummy"
+        
+        pygame.init()
+        pygame.joystick.init()
+        
+        self.joystick = None
+        self.max_vx = max_vx
+        self.max_vy = max_vy
+        self.max_yaw = max_yaw
+        self.deadzone = deadzone
+        self.debug_counter = 0
+        
+        if pygame.joystick.get_count() > 0:
+            self.joystick = pygame.joystick.Joystick(0)
+            self.joystick.init()
+            print(f"[Info] 已连接手柄: {self.joystick.get_name()}，共有 {self.joystick.get_numaxes()} 个轴")
+        else:
+            print("[Warning] 未检测到手柄，将使用默认配置指令。")
+
+    def get_command(self, default_cmd):
+        if self.joystick is None:
+            return default_cmd
+
+        # 刷新硬件事件队列
+        pygame.event.pump()
+
+        raw_vx = -self.joystick.get_axis(1) 
+        raw_vy = -self.joystick.get_axis(0) 
+        
+        num_axes = self.joystick.get_numaxes()
+        raw_yaw = -self.joystick.get_axis(3) if num_axes > 3 else 0.0 
+
+        # 调试输出
+        self.debug_counter += 1
+        if self.debug_counter % 50 == 0:
+            print(f"[Debug] 当前输入 -> 前进/后退(vx): {raw_vx:.2f}, 平移(vy): {raw_vy:.2f}, 转向(yaw): {raw_yaw:.2f}")
+
+        # 死区过滤
+        vx = raw_vx if abs(raw_vx) > self.deadzone else 0.0
+        vy = raw_vy if abs(raw_vy) > self.deadzone else 0.0
+        yaw = raw_yaw if abs(raw_yaw) > self.deadzone else 0.0
+
+        cmd = np.array([
+            vx * self.max_vx,
+            vy * self.max_vy,
+            yaw * self.max_yaw
+        ], dtype=np.float32)
+        
+        return cmd
+
 
 
 if __name__ == "__main__":
@@ -88,6 +144,13 @@ if __name__ == "__main__":
                        help='Direct path to config file (overrides default config)')
     parser.add_argument('--encoder_seq_len', type=int, default=32,
                        help='Encoder sequence length (number of history frames for distillation policies)')
+
+    # 手柄相关参数
+    parser.add_argument('--use_gamepad', action='store_true', 
+                       help='Enable gamepad control. If not set, uses config.cmd_init')
+    parser.add_argument('--max_vx', type=float, default=1.0, help='Max forward velocity')
+    parser.add_argument('--max_vy', type=float, default=0.5, help='Max lateral velocity')
+    parser.add_argument('--max_yaw', type=float, default=1.0, help='Max yaw rate')
 
     args = parser.parse_args()
 
@@ -143,6 +206,13 @@ if __name__ == "__main__":
     if encoder_obs_dim is not None:
         for _ in range(args.encoder_seq_len):
             encoder_frame_stack.append(np.zeros(encoder_obs_dim, dtype=np.float32))
+    current_cmd = config.cmd_init.copy()
+    if args.use_gamepad:
+        gamepad = GamepadController(
+            max_vx=args.max_vx, 
+            max_vy=args.max_vy, 
+            max_yaw=args.max_yaw
+        )
 
     with mujoco.viewer.launch_passive(m, d) as viewer:
         # Set up camera to follow the robot
@@ -162,14 +232,14 @@ if __name__ == "__main__":
             step_start = time.time()
             current_sim_time = time.time() - start
 
-            # --- 添加推力干扰：每隔 4 秒推一次 ---
-            if current_sim_time - last_push_time > 3.0:
-                # 瞬间给 Y 轴（侧向）增加 0.5 m/s 的速度
-                d.qvel[1] += 0.5
-                # 如果想往前推，可以修改 X 轴： d.qvel[0] += 0.5
-                print(f"[{current_sim_time:.2f}s] Pushed!! Current velocity after push: {d.qvel[0]:.2f} (forward), {d.qvel[1]:.2f} (sideways)")
-                last_push_time = current_sim_time
-            # ------------------------------------
+            # # --- 添加推力干扰：每隔 4 秒推一次 ---
+            # if current_sim_time - last_push_time > 3.0:
+            #     # 瞬间给 Y 轴（侧向）增加 0.5 m/s 的速度
+            #     d.qvel[1] += 0.5
+            #     # 如果想往前推，可以修改 X 轴： d.qvel[0] += 0.5
+            #     print(f"[{current_sim_time:.2f}s] Pushed!! Current velocity after push: {d.qvel[0]:.2f} (forward), {d.qvel[1]:.2f} (sideways)")
+            #     last_push_time = current_sim_time
+            # # ------------------------------------
             tau = pd_control(target_dof_pos, d.qpos[7:7 + config.num_actions], config.kps, np.zeros_like(config.kds), d.qvel[6:6 + config.num_actions], config.kds)
             d.ctrl[:] = tau
             # mj_step can be replaced with code that also evaluates
@@ -181,6 +251,13 @@ if __name__ == "__main__":
                 # Apply control signal here.
 
                 start_compute = time.time()
+                
+                # 读取手柄更新指令
+                if args.use_gamepad:
+                    current_cmd = gamepad.get_command(config.cmd_init)
+                else:
+                    current_cmd = config.cmd_init
+
                 # Get sensor data (explicitly use float32 for consistency with real robot)
                 qj = d.qpos[7:7 + config.num_actions].astype(np.float32)
                 dqj = d.qvel[6:6 + config.num_actions].astype(np.float32)
@@ -201,7 +278,7 @@ if __name__ == "__main__":
                     dqj=dqj,
                     quat=quat,
                     omega=omega,
-                    cmd=config.cmd_init,
+                    cmd=current_cmd,
                     previous_action=action,
                     config=config,
                     object_obs=object_obs,
