@@ -8,6 +8,9 @@ import numpy as np
 import torch
 from collections import deque
 import pygame
+import cv2
+from pupil_apriltags import Detector
+import math
 
 torch.set_num_threads(1)
 torch.set_num_interop_threads(1)
@@ -134,6 +137,47 @@ class GamepadController:
         
         return cmd
 
+def get_object_pose_from_vision(img_gray, detector, cam_params, tag_size=0.05):
+    """
+    通过 AprilTag 从图像中推导物体在相机坐标系下的位姿
+    """
+    # 运行 AprilTag 检测
+    detections = detector.detect(img_gray, estimate_tag_pose=True, 
+                                 camera_params=cam_params, tag_size=tag_size)
+    
+    if len(detections) == 0:
+        return None  # 视野内无二维码
+    
+    det = detections[0]
+    pos = det.pose_t.flatten() 
+    rot_mat = det.pose_R       
+    
+    # 1. 核心修正：OpenCV 到 MuJoCo Site 坐标系的映射
+    # 映射关系推导：X_site = Z_cv, Y_site = -Y_cv, Z_site = X_cv
+    T_cv2mj = np.array([
+        [0.0,  0.0,  1.0],
+        [0.0, -1.0,  0.0],
+        [1.0,  0.0,  0.0]
+    ], dtype=np.float32)
+
+    # 2. 物体局部坐标系转换 (保持与原物体 Z 轴向上对齐)
+    T_tag2obj = np.array([
+        [1.0,  0.0,  0.0],
+        [0.0, -1.0,  0.0],
+        [0.0,  0.0, -1.0]
+    ], dtype=np.float32)
+
+    # 计算 MuJoCo 体系下的平移和旋转
+    pos_mj = T_cv2mj @ pos
+    rot_mj = T_cv2mj @ rot_mat @ np.linalg.inv(T_tag2obj)
+    
+    # 转换为 wxyz 四元数
+    rotation = Rotation.from_matrix(rot_mj)
+    quat_xyzw = rotation.as_quat()
+    quat_wxyz = np.array([quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]], dtype=np.float32)
+    
+    object_obs = np.concatenate([pos_mj, quat_wxyz], axis=0).astype(np.float32)
+    return object_obs
 
 
 if __name__ == "__main__":
@@ -178,6 +222,21 @@ if __name__ == "__main__":
     m = mujoco.MjModel.from_xml_path(config.xml_path)
     d = mujoco.MjData(m)
     m.opt.timestep = config.simulation_dt
+
+    # --- 新增：初始化视觉渲染和 AprilTag ---
+    cam_name = "d435_camera"
+    cam_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_CAMERA, cam_name)
+    width, height = 640, 480
+    renderer = mujoco.Renderer(m, height=height, width=width)
+    
+    # 推导相机内参 (fx, fy, cx, cy) 供 AprilTag 库使用
+    fovy = m.cam_fovy[cam_id]
+    f = 0.5 * height / math.tan(fovy * math.pi / 360)
+    cam_params = [f, f, width / 2, height / 2]
+    
+    detector = Detector(families='tag36h11')
+    last_valid_object_obs = np.array([0, 0, 0.5, 1, 0, 0, 0], dtype=np.float32) # 默认位姿缓冲
+    # --------------------------------------
 
     default_angles = config.default_angles[config.policy_to_robot]
     target_dof_pos = default_angles.copy()
@@ -232,14 +291,15 @@ if __name__ == "__main__":
             step_start = time.time()
             current_sim_time = time.time() - start
 
-            # # --- 添加推力干扰：每隔 4 秒推一次 ---
-            # if current_sim_time - last_push_time > 3.0:
-            #     # 瞬间给 Y 轴（侧向）增加 0.5 m/s 的速度
-            #     d.qvel[1] += 0.5
-            #     # 如果想往前推，可以修改 X 轴： d.qvel[0] += 0.5
-            #     print(f"[{current_sim_time:.2f}s] Pushed!! Current velocity after push: {d.qvel[0]:.2f} (forward), {d.qvel[1]:.2f} (sideways)")
-            #     last_push_time = current_sim_time
-            # # ------------------------------------
+            # --- 添加推力干扰：每隔 4 秒推一次 ---
+            if current_sim_time - last_push_time > 3.0:
+                # 瞬间给 Y 轴（侧向）增加 0.5 m/s 的速度
+                d.qvel[1] += 0.5
+                # 如果想往前推，可以修改 X 轴： d.qvel[0] += 0.5
+                print(f"[{current_sim_time:.2f}s] Pushed!! Current velocity after push: {d.qvel[0]:.2f} (forward), {d.qvel[1]:.2f} (sideways)")
+                last_push_time = current_sim_time
+            # ------------------------------------
+
             tau = pd_control(target_dof_pos, d.qpos[7:7 + config.num_actions], config.kps, np.zeros_like(config.kds), d.qvel[6:6 + config.num_actions], config.kds)
             d.ctrl[:] = tau
             # mj_step can be replaced with code that also evaluates
@@ -268,7 +328,48 @@ if __name__ == "__main__":
                 object_obs = None
                 
                 if encoder_obs_dim is not None:
-                    object_obs = get_object_pose(d, m)
+                    # 1. 渲染图像
+                    renderer.update_scene(d, camera=cam_name)
+                    img_rgb = renderer.render()
+
+                    # # --- 新增调试：保存几帧画面看看相机到底在看哪 ---
+                    # control_step = counter // config.control_decimation
+                    # if control_step == 10 or control_step == 50:
+                    #     # OpenCV 保存图片需要 BGR 格式
+                    #     cv2.imwrite(f"debug_vision_view_{control_step}.jpg", cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR))
+                    #     print(f"已保存 debug_vision_view_{control_step}.jpg 用于检查相机视角")
+                    # # ----------------------------------------------
+
+                    img_gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+                    
+                    # 2. 视觉解算
+                    vision_obs = get_object_pose_from_vision(img_gray, detector, cam_params, tag_size=0.0467)# tag_size 需要根据实际物体大小调整
+                    
+                    # 3. 异常处理
+                    if vision_obs is not None:
+                        object_obs = vision_obs
+                        last_valid_object_obs = vision_obs
+                    else:
+                        # 视野被遮挡或丢失目标时，沿用上一帧数据
+                        object_obs = last_valid_object_obs
+                    
+                # --- 打印视觉解算的物体位姿 ---
+                # 计算真值 (原代码逻辑)
+                gt_obs = get_object_pose(d, m)
+                
+                if vision_obs is not None:
+                    object_obs = vision_obs
+                    last_valid_object_obs = vision_obs
+                    
+                    # 关键诊断：每50步打印一次 GT 与 Vision 的对比
+                    control_step = counter // config.control_decimation
+                    if control_step % 50 == 0:
+                        print(f"[{current_sim_time:.2f}s]")
+                        print(f"GT真值 : Pos {gt_obs[:3].round(3)} | Quat {gt_obs[3:].round(3)}")
+                        print(f"视觉值 : Pos {vision_obs[:3].round(3)} | Quat {vision_obs[3:].round(3)}")
+                        print("-" * 40)
+                else:
+                    object_obs = last_valid_object_obs
 
                 # Compute policy action using shared function
                 action, target_dof_pos = compute_policy_action(
