@@ -181,6 +181,10 @@
                       pos="0.0576235 0.01753 0.42987"
                       euler="0 0.8307767239493009 0"
                       size="0.01" rgba="1 0 0 0.5"/>
+            <camera name="d435_camera" 
+          	      pos="0.0576235 0.01753 0.42987" 
+          	      euler="0 2.401 0" 
+          	      fovy="55"/>
             <inertial pos="0.00203133 0.000339727 0.184597" quat="0.999802 -5.98967e-05 0.0198391 0.0013197" mass="7.817" diaginertia="0.121795 0.109773 0.0273733"/>
             <joint name="waist_pitch_joint" pos="0 0 0" axis="0 1 0" range="-0.52 0.52"
               actuatorfrcrange="-50 50" class="torso_motor"/>
