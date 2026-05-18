@@ -223,7 +223,7 @@ if __name__ == "__main__":
     d = mujoco.MjData(m)
     m.opt.timestep = config.simulation_dt
 
-    # --- 新增：初始化视觉渲染和 AprilTag ---
+    # --- 初始化视觉渲染和 AprilTag ---
     cam_name = "d435_camera"
     cam_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_CAMERA, cam_name)
     width, height = 640, 480
@@ -332,7 +332,7 @@ if __name__ == "__main__":
                     renderer.update_scene(d, camera=cam_name)
                     img_rgb = renderer.render()
 
-                    # # --- 新增调试：保存几帧画面看看相机到底在看哪 ---
+                    # # ---保存几帧画面查看相机视角---
                     # control_step = counter // config.control_decimation
                     # if control_step == 10 or control_step == 50:
                     #     # OpenCV 保存图片需要 BGR 格式
@@ -354,19 +354,19 @@ if __name__ == "__main__":
                         object_obs = last_valid_object_obs
                     
                 # --- 打印视觉解算的物体位姿 ---
-                # 计算真值 (原代码逻辑)
+                # 计算真值
                 gt_obs = get_object_pose(d, m)
                 
                 if vision_obs is not None:
                     object_obs = vision_obs
                     last_valid_object_obs = vision_obs
                     
-                    # 关键诊断：每50步打印一次 GT 与 Vision 的对比
+                    # 每50步打印一次 GT 与 Vision 的对比
                     control_step = counter // config.control_decimation
                     if control_step % 50 == 0:
                         print(f"[{current_sim_time:.2f}s]")
-                        print(f"GT真值 : Pos {gt_obs[:3].round(3)} | Quat {gt_obs[3:].round(3)}")
-                        print(f"视觉值 : Pos {vision_obs[:3].round(3)} | Quat {vision_obs[3:].round(3)}")
+                        print(f"真实值 : Pos {gt_obs[:3].round(3)} | Quat {gt_obs[3:].round(3)}")
+                        print(f"解算值 : Pos {vision_obs[:3].round(3)} | Quat {vision_obs[3:].round(3)}")
                         print("-" * 40)
                 else:
                     object_obs = last_valid_object_obs
