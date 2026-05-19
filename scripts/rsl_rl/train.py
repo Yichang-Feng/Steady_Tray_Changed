@@ -179,7 +179,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # save resume path before creating a new log_dir
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
-        resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
+        # 如果通过CLI显式传入了文件，且该路径真实存在，则直接使用绝对路径
+        if args_cli.checkpoint and os.path.exists(args_cli.checkpoint):
+            resume_path = args_cli.checkpoint
+        else:
+            resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
     elif is_adapter and agent_cfg.load_run and agent_cfg.load_run != ".*":
         # For adapter training with load_run specified, load the base policy checkpoint
         resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)

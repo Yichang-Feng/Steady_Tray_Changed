@@ -343,7 +343,7 @@ if __name__ == "__main__":
                     img_gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
                     
                     # 2. 视觉解算
-                    vision_obs = get_object_pose_from_vision(img_gray, detector, cam_params, tag_size=0.0467)# tag_size 需要根据实际物体大小调整
+                    vision_obs = get_object_pose_from_vision(img_gray, detector, cam_params, tag_size=0.0465)# tag_size 需要根据实际物体大小调整
                     
                     # 3. 异常处理
                     if vision_obs is not None:
