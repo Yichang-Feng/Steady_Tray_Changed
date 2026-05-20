@@ -235,7 +235,7 @@ if __name__ == "__main__":
     cam_params = [f, f, width / 2, height / 2]
     
     detector = Detector(families='tag36h11')
-    last_valid_object_obs = np.array([0, 0, 0.5, 1, 0, 0, 0], dtype=np.float32) # 默认位姿缓冲
+    last_valid_object_obs = np.array([0.312, -0.004, 0.037, 0.746, 0.237, -0.326, -0.531], dtype=np.float32) # 默认位姿缓冲
     # --------------------------------------
 
     default_angles = config.default_angles[config.policy_to_robot]
@@ -291,14 +291,14 @@ if __name__ == "__main__":
             step_start = time.time()
             current_sim_time = time.time() - start
 
-            # --- 添加推力干扰：每隔 4 秒推一次 ---
-            if current_sim_time - last_push_time > 3.0:
-                # 瞬间给 Y 轴（侧向）增加 0.5 m/s 的速度
-                d.qvel[1] += 0.5
-                # 如果想往前推，可以修改 X 轴： d.qvel[0] += 0.5
-                print(f"[{current_sim_time:.2f}s] Pushed!! Current velocity after push: {d.qvel[0]:.2f} (forward), {d.qvel[1]:.2f} (sideways)")
-                last_push_time = current_sim_time
-            # ------------------------------------
+            # # --- 添加推力干扰：每隔 4 秒推一次 ---
+            # if current_sim_time - last_push_time > 3.0:
+            #     # 瞬间给 Y 轴（侧向）增加 0.5 m/s 的速度
+            #     d.qvel[1] += 0
+            #     # 如果想往前推，可以修改 X 轴： d.qvel[0] += 0.5
+            #     print(f"[{current_sim_time:.2f}s] Pushed!! Current velocity after push: {d.qvel[0]:.2f} (forward), {d.qvel[1]:.2f} (sideways)")
+            #     last_push_time = current_sim_time
+            # # ------------------------------------
 
             tau = pd_control(target_dof_pos, d.qpos[7:7 + config.num_actions], config.kps, np.zeros_like(config.kds), d.qvel[6:6 + config.num_actions], config.kds)
             d.ctrl[:] = tau

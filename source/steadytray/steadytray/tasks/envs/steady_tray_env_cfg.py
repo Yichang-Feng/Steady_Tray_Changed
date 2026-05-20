@@ -11,10 +11,7 @@ from steadytray.tasks import mdp
 from .locomotion_env_cfg import RobotEnvCfg, RobotSceneCfg, EventCfg, RewardsCfg, TerminationsCfg
 
 # Initial positions for the tray and tray holders relative to the robot's pelvis
-TRAY_INITIAL_POS = [0.30225, 0.0, 0.141]
-LEFT_TRAY_HOLDER_POS = [0.24127, 0.14865, 0.09523]
-RIGHT_TRAY_HOLDER_POS = [0.24127, -0.14865, 0.09523]
-TORSO_IN_PELVIS = [0.0, 0.0, 0.044]
+TRAY_INITIAL_POS = [0.30225, 0.0, 0.167]
 
 
 @configclass
@@ -24,14 +21,17 @@ class TraySceneCfg(RobotSceneCfg):
     tray: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Tray",
         spawn=sim_utils.CuboidCfg(
-            # size=(0.254, 0.352, 0.015),
-            size=(0.254, 0.352, 0.018),
+            size=(0.25, 0.500, 0.02),
             activate_contact_sensors=True,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.1),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.4),
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0), metallic=0.2),
-            physics_material=sim_utils.RigidBodyMaterialCfg(compliant_contact_stiffness=8e4, compliant_contact_damping=400),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=1.5, 
+                dynamic_friction=1.0,
+                restitution=0.0
+            ),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(),
     )
@@ -39,7 +39,10 @@ class TraySceneCfg(RobotSceneCfg):
         prim_path="{ENV_REGEX_NS}/Tray", 
         track_air_time=True,
         history_length=10,
-        filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/left_tray_holder_link", "{ENV_REGEX_NS}/Robot/right_tray_holder_link"],
+        filter_prim_paths_expr=[
+            "{ENV_REGEX_NS}/Robot/left_rubber_hand", 
+            "{ENV_REGEX_NS}/Robot/right_rubber_hand"
+        ],
     )
 
 
@@ -156,7 +159,7 @@ class TrayRewardsCfg(RewardsCfg):
         weight=0.5,
         params={
             "entity1_cfg": SceneEntityCfg('tray'),
-            "entity2_cfg": SceneEntityCfg('robot', body_names='left_tray_holder_link'),
+            "entity2_cfg": SceneEntityCfg('robot', body_names='left_rubber_hand'),
             "lambda_exp": 2.0,
         },
     )
@@ -165,7 +168,7 @@ class TrayRewardsCfg(RewardsCfg):
         weight=0.5,
         params={
             "entity1_cfg": SceneEntityCfg('tray'),
-            "entity2_cfg": SceneEntityCfg('robot', body_names='right_tray_holder_link'),
+            "entity2_cfg": SceneEntityCfg('robot', body_names='right_rubber_hand'),
             "lambda_exp": 2.0,
         },
     )

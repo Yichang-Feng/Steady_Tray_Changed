@@ -30,7 +30,7 @@ DAMPING_4010 = 2.0 * DAMPING_RATIO * ARMATURE_4010 * NATURAL_FREQ  # 1.068141502
 
 G1_DELAY_CFG = unitree.UnitreeArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path=f"{UNITREE_MODEL_DIR}/g1_side_tray_holder.usd",
+        usd_path=f"{UNITREE_MODEL_DIR}/g1_29dof.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -51,6 +51,13 @@ G1_DELAY_CFG = unitree.UnitreeArticulationCfg(
             ".*_hip_pitch_joint": -0.10,
             ".*_knee_joint": 0.30,
             ".*_ankle_pitch_joint": -0.2,
+            ".*_shoulder_pitch_joint": 0.0, 
+            ".*_shoulder_roll_joint": 0.0,
+            ".*_elbow_joint": 1.57,        # 肘部弯曲90度
+            "left_wrist_roll_joint": 1.57,   # 左手心朝上
+            "right_wrist_roll_joint": -1.57, # 右手心朝上
+            ".*_wrist_pitch_joint": 0.0,
+            ".*_wrist_yaw_joint": 0.0,
         },
         joint_vel={".*": 0.0},
     ),
