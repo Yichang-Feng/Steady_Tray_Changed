@@ -370,6 +370,72 @@ def export_distillation_policy_as_jit(
         traced = torch.jit.trace(export_policy, (example_student_encoder_obs, example_policy_obs))
     traced.save(os.path.join(path, filename))
 
+def export_distillation_policy_as_onnx(
+    policy, 
+    normalizer, 
+    path, 
+    filename="policy.onnx", 
+    student_encoder_obs_dim: int = None,
+    policy_obs_dim: int = None,
+    encoder_seq_len: int = 32,
+    adapter_type: str = "film",
+    device="cpu"
+):
+    """
+    Export distillation policy as ONNX directly from PyTorch module.
+    """
+    assert student_encoder_obs_dim is not None, "student_encoder_obs_dim required"
+    assert policy_obs_dim is not None, "policy_obs_dim required"
+
+    if adapter_type == "film":
+        class ExportDistillationPolicyONNX(torch.nn.Module):
+            def __init__(self, policy, normalizer):
+                super().__init__()
+                self.student_encoder = policy.student_encoder
+                self.actor_body = policy.actor_body
+                self.action_head = policy.action_head
+                self.normalizer = normalizer
+
+            def forward(self, student_encoder_obs, policy_obs):
+                policy_obs = _apply_normalizer(self.normalizer, policy_obs)
+                e_t = self.student_encoder(student_encoder_obs)
+                h = self.actor_body(policy_obs, e_t)
+                actions = self.action_head(h)
+                return actions
+
+    elif adapter_type == "residual":
+        class ExportDistillationPolicyONNX(torch.nn.Module):
+            def __init__(self, policy, normalizer):
+                super().__init__()
+                self.student_encoder = policy.student_encoder
+                self.frozen_actor = policy.frozen_actor
+                self.residual_adapter = policy.residual_adapter
+                self.normalizer = normalizer
+
+            def forward(self, student_encoder_obs, policy_obs):
+                policy_obs = _apply_normalizer(self.normalizer, policy_obs)
+                e_t = self.student_encoder(student_encoder_obs)
+                base_actions = self.frozen_actor(policy_obs)
+                actions = self.residual_adapter(base_actions, e_t, proprio=policy_obs)
+                return actions
+
+    export_policy = ExportDistillationPolicyONNX(policy, normalizer).eval()
+    
+    # 构建双输入 dummy tensors
+    example_student_encoder_obs = torch.randn(encoder_seq_len, 1, student_encoder_obs_dim, dtype=torch.float32, device=device)
+    example_policy_obs = torch.randn(1, policy_obs_dim, dtype=torch.float32, device=device)
+    
+    os.makedirs(path, exist_ok=True)
+    with torch.inference_mode():
+        torch.onnx.export(
+            export_policy,
+            args=(example_student_encoder_obs, example_policy_obs), # 必须打包为 tuple
+            f=os.path.join(path, filename),
+            input_names=["student_encoder_obs", "policy_obs"],
+            output_names=["actions"],
+            opset_version=17,  # Transformer 架构强烈建议使用 opset 17
+            do_constant_folding=True
+        )
 
 def export_policy_as_onnx(policy, normalizer, path, filename="policy.onnx",
                           input_names=("observations",), output_names=("actions",),
@@ -596,6 +662,23 @@ def main():
                 )
                 print(f"[OK] JIT (distillation/{adapter_type}): {export_dir/jit_filename}")
                 
+            # ======== 在这里新增以下代码 ========
+                try:
+                    export_distillation_policy_as_onnx(
+                        policy,
+                        normalizer=None,
+                        path=str(export_dir),
+                        filename=onnx_filename,
+                        student_encoder_obs_dim=arch_params['num_student_encoder_obs'],
+                        policy_obs_dim=arch_params['num_actor_obs'],
+                        encoder_seq_len=args.encoder_seq_len,
+                        adapter_type=adapter_type,
+                        device=args.device
+                    )
+                    print(f"[OK] ONNX (distillation/{adapter_type}): {export_dir/onnx_filename}")
+                except Exception as e:
+                    print(f"[FAIL] ONNX Export Failed: {e}")
+                # =====================================
             elif is_standard:
                 print("[INFO] Detected: Standard RSL-RL Policy")
                 # Use standard OnPolicyRunner
