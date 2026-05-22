@@ -5,7 +5,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 from steadytray.tasks import mdp
-
+import math
 # 从 locomotion_env_cfg 导入基础的机器人和运动配置
 from .locomotion_env_cfg import RobotEnvCfg, RobotSceneCfg, EventCfg, RewardsCfg, TerminationsCfg, ObservationsCfg
 
@@ -21,34 +21,31 @@ class ArmPostureSceneCfg(RobotSceneCfg):
 class ArmPostureRewardsCfg(RewardsCfg):
     """第一阶段奖励配置：聚焦于下肢走得稳、上肢姿态定。"""
 
-    # 【关键重写】强制关闭父类中默认的低权重 L1 手臂惩罚，避免与新的指数奖励冲突
+    # 强制关闭父类中默认的低权重 L1 手臂惩罚，避免与新的指数奖励冲突
     joint_deviation_arms = None
 
-    # 【核心奖励】强力约束手臂维持在默认的平举/手心向上姿态
-    arm_posture_tracking = RewTerm(
-        func=mdp.joint_deviation_exp,
-        weight=2.5,  # 给予非常高的权重，迫使机器人在高优先级下满足控臂约束
+    gated_arm_posture = RewTerm(
+        func=mdp.locomotion_gated_arm_posture_exp,
+        weight=0.0,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
                 joint_names=[
-                    ".*_shoulder_pitch_joint",
-                    ".*_shoulder_roll_joint",
-                    ".*_shoulder_yaw_joint",
+                    ".*_shoulder_.*",
                     ".*_elbow_joint",
-                    ".*_wrist_roll_joint",
-                    ".*_wrist_pitch_joint",
-                    ".*_wrist_yaw_joint",
+                    ".*_wrist_.*",
                 ],
             ),
-            "lambda_exp": 1.0,  # 对关节偏离的敏感度
+            "command_name": "base_velocity",
+            "std": math.sqrt(0.25),
+            "lambda_exp": 1.0,
         },
     )
 
     # 辅助惩罚：压制手臂关节的运动速度，防止手臂由于高频抖动带来仿真不稳定
     arm_velocity_penalty = RewTerm(
         func=mdp.joint_vel_l2,
-        weight=-1e-4,
+        weight=-0,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -64,8 +61,24 @@ class ArmPostureRewardsCfg(RewardsCfg):
     # 惩罚过大的扭矩输出，保证动作顺滑
     torque_penalty = RewTerm(
         func=mdp.joint_torques_l2,
-        weight=-2e-5,
+        weight=-0,
         params={"asset_cfg": SceneEntityCfg("robot")}
+    )
+
+    # 手臂动作静默惩罚
+    arm_action_silence = RewTerm(
+        func=mdp.arm_action_l2_penalty,
+        weight=-0.0,  # 压制前期乱挥手
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    ".*_shoulder_.*",
+                    ".*_elbow_.*",
+                    ".*_wrist_.*",
+                ],
+            )
+        }
     )
 
 @configclass

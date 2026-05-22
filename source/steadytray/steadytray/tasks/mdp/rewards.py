@@ -511,3 +511,42 @@ def contact_force_exp(
 
     # Apply exponential kernel: lower forces -> higher reward
     return torch.exp(-lambda_exp * total_force)
+
+def locomotion_gated_arm_posture_exp(
+    env: ManagerBasedRLEnv,
+    std: float,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    lambda_exp: float = 1.0
+) -> torch.Tensor:
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    # --- 1. 计算指令跟随误差 (评估走路走得好不好) ---
+    root_lin_vel_w = asset.data.root_lin_vel_w
+    root_quat_w = asset.data.root_quat_w
+    from isaaclab.utils.math import quat_apply_inverse, yaw_quat
+    vel_yaw = quat_apply_inverse(yaw_quat(root_quat_w), root_lin_vel_w)
+
+    # 获取当前时间步的速度指令 [vx, vy]
+    command = env.command_manager.get_command(command_name)[:, :2]
+    
+    # 计算当前运动速度与指令的均方差
+    vel_error = torch.sum(torch.square(command - vel_yaw[:, :2]), dim=1)
+    tracking_score = torch.exp(-vel_error / std**2) # 最终得分介于 0 到 1 之间
+
+    # --- 2. 计算手臂姿态误差 ---
+    angle = asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids]
+    posture_error = torch.sum(torch.abs(angle), dim=1)
+    posture_score = torch.exp(-lambda_exp * posture_error) # 介于 0 到 1 之间
+
+    # --- 3. 门控机制 (Reward Gating) ---
+    # 如果速度追踪得分低于阈值，直接将手臂姿态分归零
+    gated_posture_score = torch.where(tracking_score > 0.3, posture_score, torch.zeros_like(posture_score))
+    return tracking_score * gated_posture_score
+
+def arm_action_l2_penalty(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """惩罚手臂的动作输出，迫使其在不需要发力时依赖底层PD控制器的默认姿态"""
+    # 提取网络针对手臂关节输出的 action 值
+    arm_actions = env.action_manager.action[:, asset_cfg.joint_ids]
+    # L2 惩罚
+    return torch.sum(torch.square(arm_actions), dim=1)

@@ -69,7 +69,7 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
+# from isaaclab_rl.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper, export_policy_as_jit, export_policy_as_onnx
 from isaaclab_tasks.utils import get_checkpoint_path
 import steadytray.tasks  # noqa: F401
@@ -123,10 +123,8 @@ def main():
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Loading experiment from directory: {log_root_path}")
     if args_cli.use_pretrained_checkpoint:
-        resume_path = get_published_pretrained_checkpoint("rsl_rl", args_cli.task)
-        if not resume_path:
-            print("[INFO] Unfortunately a pre-trained checkpoint is currently unavailable for this task.")
-            return
+        # 抛出明确异常，因为新版已经不提供该接口
+        raise NotImplementedError("In Isaac Lab (for Sim 5.1), --use_pretrained_checkpoint is no longer supported in this script.")
     elif args_cli.checkpoint:
         resume_path = retrieve_file_path(args_cli.checkpoint)
     else:
@@ -206,17 +204,18 @@ def main():
             # version 2.2 and below
             policy_nn = ppo_runner.alg.actor_critic
 
-        # export policy to onnx/jit (only for standard policy)
-        export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
-        export_policy_as_jit(policy_nn, ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.pt")
-        export_policy_as_onnx(
-            policy_nn, normalizer=ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.onnx"
-        )
+        # # export policy to onnx/jit (only for standard policy)
+        # export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
+        # export_policy_as_jit(policy_nn, ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.pt")
+        # export_policy_as_onnx(
+        #     policy_nn, normalizer=ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.onnx"
+        # )
     
     dt = env.unwrapped.step_dt
 
     # reset environment
-    obs, info = env.get_observations()
+    # 使用标准的 reset() 替代 get_observations()
+    obs, _ = env.reset()
     timestep = 0
 
     # simulate environment
@@ -245,8 +244,13 @@ def main():
                 else:
                     raise ValueError("Expected dictionary observations for adapter policy")
             else:
-                # For standard policy - single observation tensor
-                actions = policy.__call__(obs)
+                # For standard policy - single observation tensor passed directly to policy
+                if hasattr(obs, "keys") and "policy" in obs.keys():
+                    policy_obs = obs["policy"]
+                else:
+                    policy_obs = obs
+                    
+                actions = policy.__call__(policy_obs)
                 
             # env stepping
             obs, _, _, _ = env.step(actions)
