@@ -19,7 +19,12 @@ from rsl_rl.env import VecEnv
 from rsl_rl.modules import EmpiricalNormalization
 from .actor_critic import AdaptedActorCritic, ResidualActorCritic
 from .student_teacher import AdaptedStudentTeacher
-from rsl_rl.utils import store_code_state
+
+try:
+    from rsl_rl.utils import store_code_state
+except ImportError:
+    def store_code_state(log_dir, repositories):
+        return []
 
 
 class AdapterOnPolicyRunner:
@@ -200,6 +205,7 @@ class AdapterOnPolicyRunner:
             self.alg_cfg["symmetry_cfg"]["_env"] = env
 
         # initialize algorithm
+        self.alg_cfg.pop("share_cnn_encoders", None)
         alg_class = eval(self.alg_cfg.pop("class_name"))
         self.alg: PPO | Distillation = alg_class(
             policy, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg

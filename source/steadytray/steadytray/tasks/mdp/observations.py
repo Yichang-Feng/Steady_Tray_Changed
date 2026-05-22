@@ -279,13 +279,13 @@ def object_rel_pos_top(
 
     return relative_pos_top
 
-def tray_holder_contact_forces(
+def hand_tray_contact_forces(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("tray_contact_sensor"),
 ) -> torch.Tensor:
-    """Get contact force vectors between tray and tray holders.
+    """Get contact force vectors between tray and robot hands.
 
-    Returns the 3D NORMAL contact force vectors for each holder (left and right).
+    Returns the 3D NORMAL contact force vectors for each hand (left and right).
 
     Args:
         env: The environment instance.
@@ -293,23 +293,26 @@ def tray_holder_contact_forces(
 
     Returns:
         Tensor of shape [num_envs, 6] containing normal force vectors:
-        - Columns 0-2: Left holder contact force vector (Fx, Fy, Fz) in world frame
-        - Columns 3-5: Right holder contact force vector (Fx, Fy, Fz) in world frame
+        - Columns 0-2: Left hand contact force vector (Fx, Fy, Fz) in world frame
+        - Columns 3-5: Right hand contact force vector (Fx, Fy, Fz) in world frame
 
     Note:
         Uses force_matrix_w which contains filtered contact forces only.
-        Shape: force_matrix_w is (N, B=1, M=2, 3) where M=2 are the two holders.
+        Shape: force_matrix_w is (N, B=1, M=2, 3) where M=2 are the two hands.
     """
     # Get filtered contact forces from the sensor
     force_matrix = env.scene.sensors[sensor_cfg.name].data.force_matrix_w
 
     # Squeeze out the sensor body dimension (B=1, only the tray)
-    holder_forces = force_matrix.squeeze(1)
+    hand_forces = force_matrix.squeeze(1)
 
     # Flatten to get force vectors: shape (num_envs, 6)
-    force_vectors = holder_forces.view(holder_forces.shape[0], -1)
-
+    force_vectors = hand_forces.view(hand_forces.shape[0], -1)
+    
     return force_vectors
+
+
+tray_holder_contact_forces = hand_tray_contact_forces
 
 
 class CombinedCameraObjectObservations(ManagerTermBase):

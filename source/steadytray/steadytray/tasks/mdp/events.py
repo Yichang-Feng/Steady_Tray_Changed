@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import torch
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import isaaclab.utils.math as math_utils
+from isaaclab.envs.mdp.events import (
+    randomize_rigid_body_material as _IsaacLabRandomizeRigidBodyMaterial,
+    randomize_rigid_body_mass as _IsaacLabRandomizeRigidBodyMass,
+)
 from isaaclab.assets import RigidObject, Articulation
 from isaaclab.managers import SceneEntityCfg
 from pxr import Gf, Sdf, UsdGeom, Vt
@@ -17,6 +22,90 @@ if TYPE_CHECKING:
 
 _all_rel_pos = torch.tensor([])  # Global variable to store relative positions across resets
 _all_scales = torch.tensor([])  # Global variable to store object body scales (radius, height) across resets
+
+
+def _resolve_scene_entity_cfgs(env: ManagerBasedRLEnv, params: dict):
+    for value in params.values():
+        if isinstance(value, SceneEntityCfg):
+            _normalize_scene_entity_cfg(value)
+            value.resolve(env.scene)
+    return True
+
+
+def _normalize_scene_entity_cfg(cfg: SceneEntityCfg):
+    """Remove stale Hydra-restored ids before resolving SceneEntityCfg."""
+    for names_attr, ids_attr in (
+        ("joint_names", "joint_ids"),
+        ("fixed_tendon_names", "fixed_tendon_ids"),
+        ("body_names", "body_ids"),
+        ("object_collection_names", "object_collection_ids"),
+    ):
+        names = getattr(cfg, names_attr, None)
+        ids = getattr(cfg, ids_attr, slice(None))
+        if names is None or ids == slice(None):
+            continue
+        if isinstance(ids, list) and any(isinstance(item, str) for item in ids):
+            setattr(cfg, ids_attr, slice(None))
+        elif isinstance(ids, list) and all(isinstance(item, int) for item in ids):
+            setattr(cfg, names_attr, None)
+        elif isinstance(ids, int):
+            setattr(cfg, names_attr, None)
+
+
+def _call_isaaclab_event_class(event_cls, env: ManagerBasedRLEnv, env_ids: torch.Tensor | None, **params):
+    if not _resolve_scene_entity_cfgs(env, params):
+        return None
+    term = event_cls(cfg=SimpleNamespace(params=params), env=env)
+    return term(env, env_ids, **params)
+
+
+def randomize_rigid_body_material(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor | None,
+    static_friction_range: tuple[float, float],
+    dynamic_friction_range: tuple[float, float],
+    restitution_range: tuple[float, float],
+    num_buckets: int,
+    asset_cfg: SceneEntityCfg,
+    make_consistent: bool = False,
+):
+    """Function wrapper for Isaac Lab 5.x material randomization class terms."""
+    return _call_isaaclab_event_class(
+        _IsaacLabRandomizeRigidBodyMaterial,
+        env,
+        env_ids,
+        static_friction_range=static_friction_range,
+        dynamic_friction_range=dynamic_friction_range,
+        restitution_range=restitution_range,
+        num_buckets=num_buckets,
+        asset_cfg=asset_cfg,
+        make_consistent=make_consistent,
+    )
+
+
+def randomize_rigid_body_mass(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor | None,
+    asset_cfg: SceneEntityCfg,
+    mass_distribution_params: tuple[float, float],
+    operation: str,
+    distribution: str = "uniform",
+    recompute_inertia: bool = True,
+    min_mass: float = 1e-6,
+):
+    """Function wrapper for Isaac Lab 5.x mass randomization class terms."""
+    return _call_isaaclab_event_class(
+        _IsaacLabRandomizeRigidBodyMass,
+        env,
+        env_ids,
+        asset_cfg=asset_cfg,
+        mass_distribution_params=mass_distribution_params,
+        operation=operation,
+        distribution=distribution,
+        recompute_inertia=recompute_inertia,
+        min_mass=min_mass,
+    )
+
 
 def _compute_and_set_object_state(
     env: ManagerBasedRLEnv,

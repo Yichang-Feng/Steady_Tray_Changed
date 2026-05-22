@@ -5,12 +5,12 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.sensors import ContactSensorCfg, FrameTransformerCfg
 from isaaclab.utils import configclass
 from steadytray.tasks import mdp
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
+from .compat import DoneTerm
 from .steady_tray_env_cfg import TraySceneCfg, TrayEventCfg, TrayRewardsCfg, TrayTerminationsCfg, TrayTerminationsPlayCfg, SteadyTrayEnvCfg
 from .locomotion_env_cfg import ObservationsCfg, CurriculumCfg
 
@@ -229,7 +229,7 @@ class ObjectObservationsCfg(ObservationsCfg):
         tray_pos_rel = ObsTerm(func=mdp.object_rel_pos, params={"sensor_cfg": SceneEntityCfg("robot_transform"), "target_frame_name": "tray"}, clip=(-1.0, 1.0))
         tray_ang_vel_rel = ObsTerm(func=mdp.object_rel_ang_vel, params={"target_asset_cfg": SceneEntityCfg("tray"), "reference_asset_cfg": SceneEntityCfg("robot", body_names="torso_link")}, scale=0.2, clip=(-50.0, 50.0))
         tray_lin_vel_rel = ObsTerm(func=mdp.object_rel_lin_vel, params={"target_asset_cfg": SceneEntityCfg("tray"), "reference_asset_cfg": SceneEntityCfg("robot", body_names="torso_link")}, scale=0.5, clip=(-10.0, 10.0))
-        tray_holder_contact_forces = ObsTerm(func=mdp.tray_holder_contact_forces, params={"sensor_cfg": SceneEntityCfg("tray_contact_sensor")}, scale=0.1, clip=(-50.0, 50.0))
+        hand_tray_contact_forces = ObsTerm(func=mdp.hand_tray_contact_forces, params={"sensor_cfg": SceneEntityCfg("tray_contact_sensor")}, scale=0.1, clip=(-50.0, 50.0))
 
         # Object observations
         object_pos_rel = ObsTerm(func=mdp.object_rel_pos, params={"sensor_cfg": SceneEntityCfg("object_tray_transform"), "target_frame_name": "object"}, clip=(-1.0, 1.0))

@@ -10,11 +10,18 @@ import torch.nn as nn
 import torch.optim as optim
 from itertools import chain
 
-# from rsl_rl.modules import ActorCritic
 from .actor_critic import AdaptedActorCritic, ResidualActorCritic
-from rsl_rl.modules.rnd import RandomNetworkDistillation
 from .rollout_storage import RolloutStorage
-from rsl_rl.utils import string_to_callable
+
+try:
+    from rsl_rl.extensions import RandomNetworkDistillation
+except ImportError:
+    from rsl_rl.modules.rnd import RandomNetworkDistillation
+
+try:
+    from rsl_rl.utils import resolve_callable as string_to_callable
+except ImportError:
+    from rsl_rl.utils import string_to_callable
 
 
 class PPO:

@@ -10,7 +10,6 @@ from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.terrains import TerrainImporterCfg
@@ -21,6 +20,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from steadytray.assets.robots.g1_delay import G1_DELAY_CFG, G1_DELAY_ACTION_SCALE
 
 from steadytray.tasks import mdp
+from .compat import DoneTerm
 
 FLAT_TERRAINS_CFG = terrain_gen.TerrainGeneratorCfg(
     size=(8.0, 8.0),
@@ -127,7 +127,7 @@ class EventCfg:
         func=mdp.randomize_rigid_body_material,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="(?!.*tray_holder.*).*"),
+            "asset_cfg": SceneEntityCfg("robot"),
             "static_friction_range": (0.3, 1.0),
             "dynamic_friction_range": (0.3, 1.0),
             "restitution_range": (0.0, 0.0),
@@ -135,11 +135,11 @@ class EventCfg:
         },
     )
 
-    tray_holder_friction = EventTerm(
+    hand_friction = EventTerm(
         func=mdp.randomize_rigid_body_material,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*tray_holder.*"),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*rubber_hand"),
             "static_friction_range": (2.0, 3.0),
             "dynamic_friction_range": (1.5, 2.5),
             "restitution_range": (0.0, 0.05),
@@ -167,11 +167,11 @@ class EventCfg:
         },
     )
 
-    random_tray_holder_mass = EventTerm(
+    random_hand_mass = EventTerm(
         func=mdp.randomize_rigid_body_mass,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*tray_holder.*"),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*rubber_hand"),
             "mass_distribution_params": (0.05, 0.3),
             "operation": "abs",
         },
@@ -400,7 +400,7 @@ class RewardsCfg:
         weight=-1,
         params={
             "threshold": 1,
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["(?!.*(ankle|tray_holder).*).*"]),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["(?!.*(ankle|rubber_hand).*).*"]),
         },
     )
 

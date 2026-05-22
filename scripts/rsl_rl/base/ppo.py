@@ -10,10 +10,18 @@ import torch.nn as nn
 import torch.optim as optim
 from itertools import chain
 
-from rsl_rl.modules import ActorCritic
-from rsl_rl.modules.rnd import RandomNetworkDistillation
-from rsl_rl.storage import RolloutStorage
-from rsl_rl.utils import string_to_callable
+from .actor_critic import ActorCritic
+from .rollout_storage import RolloutStorage
+
+try:
+    from rsl_rl.extensions import RandomNetworkDistillation
+except ImportError:
+    from rsl_rl.modules.rnd import RandomNetworkDistillation
+
+try:
+    from rsl_rl.utils import resolve_callable as string_to_callable
+except ImportError:
+    from rsl_rl.utils import string_to_callable
 
 
 class PPO:
@@ -34,6 +42,7 @@ class PPO:
         entropy_coef=0.0,
         learning_rate=1e-3,
         max_grad_norm=1.0,
+        optimizer="adam",
         use_clipped_value_loss=True,
         schedule="fixed",
         desired_kl=0.01,
@@ -108,7 +117,7 @@ class PPO:
         self.policy = policy
         self.policy.to(self.device)
         # Create optimizer
-        self.optimizer = optim.Adam(self.policy.parameters(), lr=learning_rate)
+        self.optimizer = self._make_optimizer(optimizer, self.policy.parameters(), learning_rate)
         # Create rollout storage
         self.storage: RolloutStorage = None  # type: ignore
         self.transition = RolloutStorage.Transition()
@@ -127,6 +136,18 @@ class PPO:
         self.schedule = schedule
         self.learning_rate = learning_rate
         self.normalize_advantage_per_mini_batch = normalize_advantage_per_mini_batch
+
+    def _make_optimizer(self, optimizer_name, params, learning_rate):
+        optimizer_name = optimizer_name.lower()
+        if optimizer_name == "adam":
+            return optim.Adam(params, lr=learning_rate)
+        if optimizer_name == "adamw":
+            return optim.AdamW(params, lr=learning_rate)
+        if optimizer_name == "sgd":
+            return optim.SGD(params, lr=learning_rate)
+        if optimizer_name == "rmsprop":
+            return optim.RMSprop(params, lr=learning_rate)
+        raise ValueError(f"Unsupported optimizer '{optimizer_name}'.")
 
     def init_storage(
         self, training_type, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, actions_shape

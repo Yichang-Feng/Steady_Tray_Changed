@@ -8,6 +8,7 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import os
 import sys
 
 from isaaclab.app import AppLauncher
@@ -33,12 +34,37 @@ cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def _path_is_writable(path: str) -> bool:
+    """Check whether a path can be used for creating run outputs."""
+    if os.path.isdir(path):
+        return os.access(path, os.W_OK)
+    parent = os.path.dirname(path) or "."
+    return os.path.isdir(parent) and os.access(parent, os.W_OK)
+
+
+def _default_output_root(kind: str) -> str:
+    """Return a writable project-local output root."""
+    env_key = "STEADYTRAY_LOG_DIR" if kind == "logs" else "STEADYTRAY_HYDRA_DIR"
+    if os.environ.get(env_key):
+        return os.path.abspath(os.environ[env_key])
+
+    preferred = os.path.join(PROJECT_ROOT, kind)
+    if _path_is_writable(preferred):
+        return preferred
+    return os.path.join(PROJECT_ROOT, "runs", kind)
+
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
 
 # clear out sys.argv for Hydra
 sys.argv = [sys.argv[0]] + hydra_args
+if not any(arg.startswith("hydra.run.dir=") or arg.startswith("hydra.sweep.dir=") for arg in hydra_args):
+    hydra_root = _default_output_root("hydra")
+    sys.argv.append(f"hydra.run.dir={hydra_root}/${{now:%Y-%m-%d}}/${{now:%H-%M-%S}}")
 
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
@@ -54,23 +80,23 @@ from packaging import version
 # for distributed training, check minimum supported rsl-rl version
 RSL_RL_VERSION = "2.3.1"
 installed_version = metadata.version("rsl-rl-lib")
-if args_cli.distributed and version.parse(installed_version) < version.parse(RSL_RL_VERSION):
-    if platform.system() == "Windows":
-        cmd = [r".\isaaclab.bat", "-p", "-m", "pip", "install", f"rsl-rl-lib=={RSL_RL_VERSION}"]
-    else:
-        cmd = ["./isaaclab.sh", "-p", "-m", "pip", "install", f"rsl-rl-lib=={RSL_RL_VERSION}"]
-    print(
-        f"Please install the correct version of RSL-RL.\nExisting version is: '{installed_version}'"
-        f" and required version is: '{RSL_RL_VERSION}'.\nTo install the correct version, run:"
-        f"\n\n\t{' '.join(cmd)}\n"
-    )
-    exit(1)
+# if args_cli.distributed and version.parse(installed_version) < version.parse(RSL_RL_VERSION):
+#     if platform.system() == "Windows":
+#         cmd = [r".\isaaclab.bat", "-p", "-m", "pip", "install", f"rsl-rl-lib=={RSL_RL_VERSION}"]
+#     else:
+#         cmd = ["./isaaclab.sh", "-p", "-m", "pip", "install", f"rsl-rl-lib=={RSL_RL_VERSION}"]
+#     print(
+#         f"Please install the correct version of RSL-RL.\nExisting version is: '{installed_version}'"
+#         f" and required version is: '{RSL_RL_VERSION}'.\nTo install the correct version, run:"
+#         f"\n\n\t{' '.join(cmd)}\n"
+#     )
+#     exit(1)
 
 """Rest everything follows."""
 
 import gymnasium as gym
 import inspect
-import os
+import pickle
 import shutil
 import torch
 from datetime import datetime
@@ -79,8 +105,8 @@ from base.on_policy_runner import OnPolicyRunner  # noqa: E402
 
 # Import adapter policy runner and wrapper for parameter-efficient fine-tuning
 try:
-    from scripts.rsl_rl.adapter.on_policy_runner import AdapterOnPolicyRunner
-    from scripts.rsl_rl.adapter.env_wrapper import AdapterRslRlVecEnvWrapper
+    from adapter.on_policy_runner import AdapterOnPolicyRunner
+    from adapter.env_wrapper import AdapterRslRlVecEnvWrapper
     ADAPTER_POLICY_AVAILABLE = True
 except ImportError as e:
     AdapterOnPolicyRunner = None
@@ -96,7 +122,15 @@ from isaaclab.envs import (
     multi_agent_to_single_agent,
 )
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.io import dump_pickle, dump_yaml
+try:
+    from isaaclab.utils.io import dump_pickle, dump_yaml
+except ImportError:
+    from isaaclab.utils.io import dump_yaml
+
+    def dump_pickle(filename, data):
+        with open(filename, "wb") as file:
+            pickle.dump(data, file)
+
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
@@ -156,7 +190,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         agent_cfg.seed = seed
 
     # specify directory for logging experiments
-    log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
+    log_root_path = os.path.join(_default_output_root("logs"), "rsl_rl", agent_cfg.experiment_name)
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
     # specify directory for logging runs: {time-stamp}_{run_name}
