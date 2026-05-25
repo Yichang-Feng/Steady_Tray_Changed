@@ -26,7 +26,7 @@ class ArmPostureRewardsCfg(RewardsCfg):
 
     gated_arm_posture = RewTerm(
         func=mdp.locomotion_gated_arm_posture_exp,
-        weight=0.0,
+        weight=0.8,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -45,7 +45,7 @@ class ArmPostureRewardsCfg(RewardsCfg):
     # 辅助惩罚：压制手臂关节的运动速度，防止手臂由于高频抖动带来仿真不稳定
     arm_velocity_penalty = RewTerm(
         func=mdp.joint_vel_l2,
-        weight=-0,
+        weight=-0.005,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -61,14 +61,14 @@ class ArmPostureRewardsCfg(RewardsCfg):
     # 惩罚过大的扭矩输出，保证动作顺滑
     torque_penalty = RewTerm(
         func=mdp.joint_torques_l2,
-        weight=-0,
+        weight=-0.0001,
         params={"asset_cfg": SceneEntityCfg("robot")}
     )
 
     # 手臂动作静默惩罚
     arm_action_silence = RewTerm(
         func=mdp.arm_action_l2_penalty,
-        weight=-0.0,  # 压制前期乱挥手
+        weight=-0.01,  # 压制前期乱挥手
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",

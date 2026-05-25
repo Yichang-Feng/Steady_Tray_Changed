@@ -521,7 +521,7 @@ def locomotion_gated_arm_posture_exp(
 ) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
 
-    # --- 1. 计算指令跟随误差 (评估走路走得好不好) ---
+    # --- 1. 计算指令跟随误差  ---
     root_lin_vel_w = asset.data.root_lin_vel_w
     root_quat_w = asset.data.root_quat_w
     from isaaclab.utils.math import quat_apply_inverse, yaw_quat
@@ -540,7 +540,7 @@ def locomotion_gated_arm_posture_exp(
     posture_score = torch.exp(-lambda_exp * posture_error) # 介于 0 到 1 之间
 
     # --- 3. 门控机制 (Reward Gating) ---
-    # 如果速度追踪得分低于阈值，直接将手臂姿态分归零
+    # 如果速度追踪得分低于阈值，将手臂姿态分归零
     gated_posture_score = torch.where(tracking_score > 0.3, posture_score, torch.zeros_like(posture_score))
     return tracking_score * gated_posture_score
 

@@ -83,3 +83,16 @@ datasets
 !**/model/*
 *.pt
 *.onnx
+hydra/2026-05-22/15-16-35/.hydra/config.yaml
+hydra/2026-05-22/15-16-35/.hydra/hydra.yaml
+hydra/2026-05-22/15-16-35/.hydra/overrides.yaml
+hydra/2026-05-22/15-18-40/.hydra/config.yaml
+hydra/2026-05-22/15-18-40/.hydra/hydra.yaml
+.gitignore
+hydra/2026-05-22/15-19-26/.hydra/config.yaml
+hydra/2026-05-22/15-18-40/.hydra/overrides.yaml
+hydra/2026-05-22/15-19-26/.hydra/hydra.yaml
+hydra/2026-05-22/15-19-26/.hydra/overrides.yaml
+hydra/2026-05-22/15-21-02/.hydra/config.yaml
+hydra/2026-05-22/15-21-02/.hydra/hydra.yaml
+hydra/2026-05-22/15-21-02/.hydra/overrides.yaml
