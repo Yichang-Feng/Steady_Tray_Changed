@@ -550,3 +550,73 @@ def arm_action_l2_penalty(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> 
     arm_actions = env.action_manager.action[:, asset_cfg.joint_ids]
     # L2 惩罚
     return torch.sum(torch.square(arm_actions), dim=1)
+
+def hands_distance_exp(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    target_distance: float = 0.4,
+    lambda_exp: float = 10.0,
+) -> torch.Tensor:
+    """Penalize the distance between two links (left and right hands) deviating from a target distance."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    # We expect asset_cfg.body_ids to have exactly 2 elements: [left_hand_id, right_hand_id]
+    left_pos = asset.data.body_link_pos_w[:, asset_cfg.body_ids[0]]
+    right_pos = asset.data.body_link_pos_w[:, asset_cfg.body_ids[1]]
+    
+    # Calculate current distance between the two hands
+    dist = torch.norm(left_pos - right_pos, dim=-1)
+    
+    # Calculate error from target distance
+    error = torch.abs(dist - target_distance)
+    
+    return torch.exp(-error * lambda_exp)
+
+def entity_relative_pos_exp(
+    env: ManagerBasedRLEnv,
+    entity1_cfg: SceneEntityCfg,
+    entity2_cfg: SceneEntityCfg,
+    target_relative_pos: tuple = (0.0, 0.0, 0.0),
+    lambda_exp: float = 10.0,
+    ignore_z: bool = False,
+) -> torch.Tensor:
+    """Penalize deviation from a target relative position between two entities."""
+    # Extract entity 1
+    if isinstance(env.scene[entity1_cfg.name], RigidObject):
+        entity1 = env.scene[entity1_cfg.name]
+        pos1 = entity1.data.root_pos_w
+        quat1 = entity1.data.root_quat_w
+    else:
+        entity1 = env.scene[entity1_cfg.name]
+        body_idx = entity1_cfg.body_ids[0] if isinstance(entity1_cfg.body_ids, list) else entity1_cfg.body_ids
+        pos1 = entity1.data.body_link_pos_w[:, body_idx]
+        quat1 = entity1.data.body_link_quat_w[:, body_idx]
+        
+    # Extract entity 2
+    if isinstance(env.scene[entity2_cfg.name], RigidObject):
+        entity2 = env.scene[entity2_cfg.name]
+        pos2 = entity2.data.root_pos_w
+    else:
+        entity2 = env.scene[entity2_cfg.name]
+        body_idx2 = entity2_cfg.body_ids[0] if isinstance(entity2_cfg.body_ids, list) else entity2_cfg.body_ids
+        pos2 = entity2.data.body_link_pos_w[:, body_idx2]
+        
+    # Relative position in world frame
+    diff_w = pos2 - pos1
+    
+    # Convert to entity1 local frame
+    from isaaclab.utils.math import quat_apply_inverse
+    diff_b = quat_apply_inverse(quat1, diff_w)
+    
+    # Target in entity1 frame
+    target = torch.tensor(target_relative_pos, device=diff_b.device).repeat(diff_b.shape[0], 1)
+    
+    # Ignore z axis if specified
+    if ignore_z:
+        diff_b = diff_b[:, :2]
+        target = target[:, :2]
+
+    # Distance to target
+    error = torch.norm(diff_b - target, dim=-1)
+    
+    return torch.exp(-error * lambda_exp)
+
