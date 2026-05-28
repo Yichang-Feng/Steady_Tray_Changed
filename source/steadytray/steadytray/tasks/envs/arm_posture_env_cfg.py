@@ -13,26 +13,47 @@ from .locomotion_env_cfg import RobotEnvCfg, RobotSceneCfg, EventCfg, RewardsCfg
 @configclass
 class ArmPostureSceneCfg(RobotSceneCfg):
     """第一阶段场景配置：彻底移除托盘与物体，只保留机器人本体。"""
-    # 继承自 RobotSceneCfg，会自动加载在 g1_delay.py 中定义好的标准 G1 机器人资产
-    pass
+    
+    def __post_init__(self):
+        super().__post_init__()
+        
+        # 确保字典存在
+        if self.robot.init_state.joint_pos is None:
+            self.robot.init_state.joint_pos = {}
+            
+        # 1. 找出并移除基础配置中原有的手臂和手腕相关的键，防止正则冲突
+        keys_to_remove = [
+            k for k in self.robot.init_state.joint_pos.keys() 
+            if "shoulder" in k or "elbow" in k or "wrist" in k
+        ]
+        for k in keys_to_remove:
+            self.robot.init_state.joint_pos.pop(k)
+        
+        # 2. 注入我们新的统一正则规则
+        self.robot.init_state.joint_pos.update({
+            ".*_shoulder_pitch_joint": 0.0,
+            ".*_shoulder_roll_joint": 0.0,
+            ".*_shoulder_yaw_joint": 0.0,
+            ".*_elbow_joint": 0.0,
+            ".*_wrist_.*": 0.0,
+        })
 
 
 @configclass
 class ArmPostureRewardsCfg(RewardsCfg):
-    """第一阶段奖励配置：聚焦于下肢走得稳、上肢姿态定。"""
+    """第一阶段奖励配置：下肢走得稳、上肢姿态定。"""
 
-    # 强制关闭父类中默认的低权重 L1 手臂惩罚，避免与新的指数奖励冲突
     joint_deviation_arms = None
 
     gated_arm_posture = RewTerm(
         func=mdp.locomotion_gated_arm_posture_exp,
-        weight=0.8,
+        weight=0.2,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
                 joint_names=[
                     ".*_shoulder_.*",
-                    ".*_elbow_joint",
+                    ".*_elbow_joint",  # 确保正则匹配到肘部
                     ".*_wrist_.*",
                 ],
             ),
@@ -42,33 +63,10 @@ class ArmPostureRewardsCfg(RewardsCfg):
         },
     )
 
-    # 辅助惩罚：压制手臂关节的运动速度，防止手臂由于高频抖动带来仿真不稳定
-    arm_velocity_penalty = RewTerm(
-        func=mdp.joint_vel_l2,
-        weight=-0.005,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=[
-                    ".*_shoulder_.*",
-                    ".*_elbow_joint",
-                    ".*_wrist_.*",
-                ],
-            )
-        },
-    )
-
-    # 惩罚过大的扭矩输出，保证动作顺滑
+    # 并且将权重进一步调小，允许手臂网络适度发力对抗重力
     torque_penalty = RewTerm(
         func=mdp.joint_torques_l2,
-        weight=-0.0001,
-        params={"asset_cfg": SceneEntityCfg("robot")}
-    )
-
-    # 手臂动作静默惩罚
-    arm_action_silence = RewTerm(
-        func=mdp.arm_action_l2_penalty,
-        weight=-0.01,  # 压制前期乱挥手
+        weight=-0.00001, 
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -81,6 +79,8 @@ class ArmPostureRewardsCfg(RewardsCfg):
         }
     )
 
+    arm_action_silence = None
+
 @configclass
 class ArmPostureEnvCfg(RobotEnvCfg):
     """第一阶段训练环境主配置。"""
@@ -90,6 +90,16 @@ class ArmPostureEnvCfg(RobotEnvCfg):
     rewards: ArmPostureRewardsCfg = ArmPostureRewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()  # 复用摔倒等基础终止条件
     observations: ObservationsCfg = ObservationsCfg()  # 仅包含机器人本体的感受空间
+
+    def __post_init__(self):
+        super().__post_init__()
+        # 默认训练时将命令采样范围设置为动作/任务限制范围，
+        # 否则默认 ranges 可能过小导致速度命令始终很小（见训练问题）。
+        try:
+            self.commands.base_velocity.ranges = self.commands.base_velocity.limit_ranges
+        except Exception:
+            # 若配置结构不同或不存在，不抛出错误，仅保留默认行为
+            pass
 
 
 @configclass
