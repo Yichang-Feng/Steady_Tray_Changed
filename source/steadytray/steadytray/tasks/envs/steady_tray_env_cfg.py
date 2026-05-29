@@ -18,6 +18,7 @@ TRAY_INITIAL_POS = [0.30225, 0.0, 0.167]
 class TraySceneCfg(RobotSceneCfg):
     """Configuration for the tray scene."""
 
+
     tray: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Tray",
         spawn=sim_utils.CuboidCfg(
@@ -136,7 +137,6 @@ class TrayRewardsCfg(RewardsCfg):
         params={"object_cfg": SceneEntityCfg("tray"), "lambda_exp": 1.0}
     )     # MAX = 0.2
 
-    # Reward for maintaining tray contact with holders
     tray_contact = RewTerm(
         func=mdp.desired_contacts_count,
         weight=0.01,

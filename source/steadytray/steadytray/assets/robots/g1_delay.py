@@ -51,11 +51,11 @@ G1_DELAY_CFG = unitree.UnitreeArticulationCfg(
             ".*_hip_pitch_joint": -0.10,
             ".*_knee_joint": 0.30,
             ".*_ankle_pitch_joint": -0.2,
-            ".*_shoulder_pitch_joint": 0.3, # 大臂稍微向前倾斜，姿态更自然
+            ".*_shoulder_pitch_joint": 0.0, # 大臂稍微向前倾斜，姿态更自然
             ".*_shoulder_roll_joint": 0.0,
-            ".*_elbow_joint": 1.57,        # 肘部弯曲90度
-            "left_wrist_roll_joint": 1.57,   # 左手心朝上
-            "right_wrist_roll_joint": -1.57, # 右手心朝上
+            ".*_elbow_joint": 0.0,        # 肘部弯曲90度
+            "left_wrist_roll_joint": -1.57,   # 左手心朝上
+            "right_wrist_roll_joint": 1.57, # 右手心朝上
             ".*_wrist_pitch_joint": 0.0,
             ".*_wrist_yaw_joint": 0.0,
         },

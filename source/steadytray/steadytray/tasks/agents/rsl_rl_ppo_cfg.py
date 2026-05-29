@@ -200,7 +200,7 @@ class G1AdapterSteadyTrayRunnerCfg(RslRlOnPolicyRunnerCfg):
     # Adapter-based policy configuration
     policy = RslRlAdaptedActorCriticCfg(
         class_name="AdaptedActorCritic",  # "AdaptedActorCritic" for FiLM, "ResidualActorCritic" for residual
-        init_noise_std=0.3,
+        init_noise_std=0.1,
         
         # Frozen base actor architecture (must match pre-trained model)
         actor_hidden_dims=[512, 256, 128],
@@ -215,14 +215,14 @@ class G1AdapterSteadyTrayRunnerCfg(RslRlOnPolicyRunnerCfg):
         encoder_dropout=0.0,     # No dropout for stable RL training
 
         # Learned gating parameter α for adapters
-        use_gate=False,           # Use learnable gating parameter α.
+        use_gate=True,           # Use learnable gating parameter α.
         
         # Residual adapter parameters
         residual_hidden_dims=[512, 256, 128],  # MLP architecture for residual actions
         clamp_residual=None,          # Clamping range for residual action(±clamp_residual).
 
         # FiLM adapter parameters
-        clamp_gamma=3.0,         # Relaxed from 2.0 to allow more modulation
+        clamp_gamma=1.5,         # Relaxed from 2.0 to allow more modulation
         adapter_hidden=128,      # Increased from 64 for more expressiveness
     )
     

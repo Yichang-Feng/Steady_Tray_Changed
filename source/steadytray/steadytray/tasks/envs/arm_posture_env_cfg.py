@@ -14,29 +14,6 @@ from .locomotion_env_cfg import RobotEnvCfg, RobotSceneCfg, EventCfg, RewardsCfg
 class ArmPostureSceneCfg(RobotSceneCfg):
     """第一阶段场景配置：彻底移除托盘与物体，只保留机器人本体。"""
     
-    def __post_init__(self):
-        super().__post_init__()
-        
-        # 确保字典存在
-        if self.robot.init_state.joint_pos is None:
-            self.robot.init_state.joint_pos = {}
-            
-        # 1. 找出并移除基础配置中原有的手臂和手腕相关的键，防止正则冲突
-        keys_to_remove = [
-            k for k in self.robot.init_state.joint_pos.keys() 
-            if "shoulder" in k or "elbow" in k or "wrist" in k
-        ]
-        for k in keys_to_remove:
-            self.robot.init_state.joint_pos.pop(k)
-        
-        # 2. 注入我们新的统一正则规则
-        self.robot.init_state.joint_pos.update({
-            ".*_shoulder_pitch_joint": 0.0,
-            ".*_shoulder_roll_joint": 0.0,
-            ".*_shoulder_yaw_joint": 0.0,
-            ".*_elbow_joint": 0.0,
-            ".*_wrist_.*": 0.0,
-        })
 
 
 @configclass
