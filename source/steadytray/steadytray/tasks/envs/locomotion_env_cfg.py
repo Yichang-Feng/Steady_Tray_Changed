@@ -400,7 +400,7 @@ class RewardsCfg:
         weight=-1,
         params={
             "threshold": 1,
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["(?!.*(ankle|rubber_hand).*).*"]),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["(?!.*(ankle|tray_holder).*).*"]),
         },
     )
 

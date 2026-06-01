@@ -6,7 +6,7 @@ from steadytray.assets.robots import unitree
 
 UNITREE_MODEL_DIR = "source/steadytray/steadytray/assets"
 
-MAX_DELAY = 4  # Maximum delay in steps
+MAX_DELAY = 0  # Maximum delay in steps
 
 ARMATURE_5020 = 0.003609725
 ARMATURE_7520_14 = 0.010177520
@@ -51,7 +51,7 @@ G1_DELAY_CFG = unitree.UnitreeArticulationCfg(
             ".*_hip_pitch_joint": -0.10,
             ".*_knee_joint": 0.30,
             ".*_ankle_pitch_joint": -0.2,
-            ".*_shoulder_pitch_joint": 0.0, # 大臂稍微向前倾斜，姿态更自然
+            ".*_shoulder_pitch_joint": 0.0,
             ".*_shoulder_roll_joint": 0.0,
             ".*_elbow_joint": 0.0,        # 肘部弯曲90度
             "left_wrist_roll_joint": -1.57,   # 左手心朝上

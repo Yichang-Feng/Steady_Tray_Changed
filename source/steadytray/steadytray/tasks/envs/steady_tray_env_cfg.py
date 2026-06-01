@@ -8,7 +8,11 @@ from isaaclab.utils import configclass
 from steadytray.tasks import mdp
 
 from .compat import DoneTerm
-from .locomotion_env_cfg import RobotEnvCfg, RobotSceneCfg, EventCfg, RewardsCfg, TerminationsCfg
+
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
+from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
+from .locomotion_env_cfg import RobotEnvCfg, RobotSceneCfg, EventCfg, RewardsCfg, TerminationsCfg, ObservationsCfg
 
 # Initial positions for the tray and tray holders relative to the robot's pelvis
 TRAY_INITIAL_POS = [0.30225, 0.0, 0.167]
@@ -43,6 +47,15 @@ class TraySceneCfg(RobotSceneCfg):
         filter_prim_paths_expr=[
             "{ENV_REGEX_NS}/Robot/left_rubber_hand", 
             "{ENV_REGEX_NS}/Robot/right_rubber_hand"
+        ],
+    )
+    robot_transform: FrameTransformerCfg = FrameTransformerCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/torso_link",  # 躯干为参考系
+        target_frames=[
+            FrameTransformerCfg.FrameCfg(
+                prim_path="{ENV_REGEX_NS}/Tray",
+                name="tray",
+            ),
         ],
     )
 

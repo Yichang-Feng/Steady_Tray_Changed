@@ -12,43 +12,20 @@ import torch
 from collections import deque
 
 import rsl_rl
-from .ppo import PPO
+from rsl_rl.algorithms import PPO, Distillation
 from rsl_rl.env import VecEnv
-from rsl_rl.modules import EmpiricalNormalization
-from .actor_critic import ActorCritic
-
-try:
-    from rsl_rl.utils import store_code_state
-except ImportError:
-    def store_code_state(log_dir, repositories):
-        return []
+from rsl_rl.modules import (
+    ActorCritic,
+    ActorCriticRecurrent,
+    EmpiricalNormalization,
+    StudentTeacher,
+    StudentTeacherRecurrent,
+)
+from rsl_rl.utils import store_code_state
 
 
 class OnPolicyRunner:
     """On-policy runner for training and evaluation."""
-
-    def _split_observations(self, obs_data, extras: dict | None = None):
-        """Convert Isaac Lab 5.x TensorDict observations to the legacy obs/extras shape."""
-        if isinstance(obs_data, tuple):
-            return obs_data
-
-        obs_dict = obs_data
-        observations = {key: obs_dict[key] for key in obs_dict.keys()} if hasattr(obs_dict, "keys") else {}
-        if hasattr(obs_dict, "get"):
-            obs = obs_dict.get("policy", None)
-            if obs is None:
-                obs = obs_dict.get("actor", None)
-            if obs is None and observations:
-                obs = next(iter(observations.values()))
-        else:
-            obs = obs_dict
-
-        if not observations:
-            observations = {"policy": obs}
-
-        extras = {} if extras is None else extras
-        extras.setdefault("observations", observations)
-        return obs, extras
 
     def __init__(self, env: VecEnv, train_cfg: dict, log_dir: str | None = None, device="cpu"):
         self.cfg = train_cfg
@@ -69,7 +46,7 @@ class OnPolicyRunner:
             raise ValueError(f"Training type not found for algorithm {self.alg_cfg['class_name']}.")
 
         # resolve dimensions of observations
-        obs, extras = self._split_observations(self.env.get_observations())
+        obs, extras = self.env.get_observations()
         num_obs = obs.shape[1]
 
         # resolve type of privileged observations
@@ -92,7 +69,7 @@ class OnPolicyRunner:
 
         # evaluate the policy class
         policy_class = eval(self.policy_cfg.pop("class_name"))
-        policy: ActorCritic = policy_class(
+        policy: ActorCritic | ActorCriticRecurrent | StudentTeacher | StudentTeacherRecurrent = policy_class(
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)
 
@@ -115,9 +92,6 @@ class OnPolicyRunner:
             self.alg_cfg["symmetry_cfg"]["_env"] = env
 
         # initialize algorithm
-        # 'share_cnn_encoders' is a legacy configuration option used by some task configs,
-        # but it is not consumed by the PPO implementation in this runner.
-        self.alg_cfg.pop("share_cnn_encoders", None)
         alg_class = eval(self.alg_cfg.pop("class_name"))
         self.alg: PPO | Distillation = alg_class(
             policy, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg
@@ -192,7 +166,7 @@ class OnPolicyRunner:
             )
 
         # start learning
-        obs, extras = self._split_observations(self.env.get_observations())
+        obs, extras = self.env.get_observations()
         privileged_obs = extras["observations"].get(self.privileged_obs_type, obs)
         obs, privileged_obs = obs.to(self.device), privileged_obs.to(self.device)
         self.train_mode()  # switch to train mode (for dropout for example)
@@ -229,8 +203,7 @@ class OnPolicyRunner:
                     # Sample actions
                     actions = self.alg.act(obs, privileged_obs)
                     # Step the environment
-                    obs_data, rewards, dones, infos = self.env.step(actions.to(self.env.device))
-                    obs, infos = self._split_observations(obs_data, infos)
+                    obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
                     # Move to device
                     obs, rewards, dones = (obs.to(self.device), rewards.to(self.device), dones.to(self.device))
                     # perform normalization

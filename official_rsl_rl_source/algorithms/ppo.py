@@ -10,28 +10,17 @@ import torch.nn as nn
 import torch.optim as optim
 from itertools import chain
 
-from .actor_critic import AdaptedActorCritic, ResidualActorCritic
-from .rollout_storage import RolloutStorage
-
-try:
-    from rsl_rl.extensions import RandomNetworkDistillation
-except ImportError:
-    from rsl_rl.modules.rnd import RandomNetworkDistillation
-
-try:
-    from rsl_rl.utils import resolve_callable as string_to_callable
-except ImportError:
-    from rsl_rl.utils import string_to_callable
+from rsl_rl.modules import ActorCritic
+from rsl_rl.modules.rnd import RandomNetworkDistillation
+from rsl_rl.storage import RolloutStorage
+from rsl_rl.utils import string_to_callable
 
 
 class PPO:
-    """Proximal Policy Optimization algorithm (https://arxiv.org/abs/1707.06347).
-    
-    Supports both FiLM adapter and Residual action adapter architectures.
-    """
+    """Proximal Policy Optimization algorithm (https://arxiv.org/abs/1707.06347)."""
 
-    policy: AdaptedActorCritic | ResidualActorCritic
-    """The actor critic module (supports both AdaptedActorCritic and ResidualActorCritic)."""
+    policy: ActorCritic
+    """The actor critic module."""
 
     def __init__(
         self,
@@ -56,7 +45,6 @@ class PPO:
         symmetry_cfg: dict | None = None,
         # Distributed training parameters
         multi_gpu_cfg: dict | None = None,
-        **kwargs,
     ):
         # device-related parameters
         self.device = device
@@ -128,20 +116,8 @@ class PPO:
         self.normalize_advantage_per_mini_batch = normalize_advantage_per_mini_batch
 
     def init_storage(
-        self, training_type, num_envs, num_transitions_per_env, encoder_obs_shape, critic_obs_shape, actions_shape, policy_obs_shape=None
+        self, training_type, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, actions_shape
     ):
-        """
-        Initialize rollout storage for three observation types.
-        
-        Args:
-            training_type: "rl" or "distillation"
-            num_envs: Number of parallel environments
-            num_transitions_per_env: Number of transitions per rollout (num_steps_per_env)
-            encoder_obs_shape: Shape of encoder observations (e.g., [seq_len, obs_dim] for sequences)
-            critic_obs_shape: Shape of critic (privileged) observations
-            actions_shape: Shape of action vectors
-            policy_obs_shape: Shape of policy observations (for base actor MLP)
-        """
         # create memory for RND as well :)
         if self.rnd:
             rnd_state_shape = [self.rnd.num_states]
@@ -152,47 +128,24 @@ class PPO:
             training_type,
             num_envs,
             num_transitions_per_env,
-            encoder_obs_shape,  # encoder obs: sequences for GRU
-            critic_obs_shape,    # critic obs: privileged observations
+            actor_obs_shape,
+            critic_obs_shape,
             actions_shape,
             rnd_state_shape,
-            policy_obs_shape,    # policy obs: flattened history for base actor
             self.device,
         )
 
-    def act(self, encoder_obs, policy_obs, critic_obs):
-        """
-        Sample actions from the policy.
-        
-        Args:
-            encoder_obs: Encoder observations (32-step history sequence for GRU)
-            policy_obs: Policy observations (5-step history, flattened) for base actor
-            critic_obs: Privileged observations for the critic
-        
-        The policy uses:
-        - encoder_obs: Full 32-step sequence to generate context via GRU
-        - policy_obs: Flattened 5-step history for frozen base actor MLP
-        - critic_obs: Privileged observations for value estimation
-        """
+    def act(self, obs, critic_obs):
         if self.policy.is_recurrent:
             self.transition.hidden_states = self.policy.get_hidden_states()
-
-        # Compute encoder latent once and reuse for both actor and critic
-        encoder_latent = self.policy.get_encoder_latent(encoder_obs)
-        
-        # compute the actions and values using pre-computed encoder latent
-        # policy.act() expects both encoder_obs and policy_obs
-        self.transition.actions = self.policy.act(encoder_obs, policy_obs, encoder_latent=encoder_latent).detach()
-        # policy.evaluate() reuses the same encoder latent
-        self.transition.values = self.policy.evaluate(critic_obs, encoder_latent=encoder_latent).detach()
+        # compute the actions and values
+        self.transition.actions = self.policy.act(obs).detach()
+        self.transition.values = self.policy.evaluate(critic_obs).detach()
         self.transition.actions_log_prob = self.policy.get_actions_log_prob(self.transition.actions).detach()
         self.transition.action_mean = self.policy.action_mean.detach()
         self.transition.action_sigma = self.policy.action_std.detach()
         # need to record obs and critic_obs before env.step()
-        # Store encoder_obs as encoder_observations (used for value computation and GRU context)
-        self.transition.encoder_observations = encoder_obs
-        # Store policy_obs separately for proper reconstruction during updates
-        self.transition.policy_observations = policy_obs
+        self.transition.observations = obs
         self.transition.privileged_observations = critic_obs
         return self.transition.actions
 
@@ -225,19 +178,9 @@ class PPO:
         self.transition.clear()
         self.policy.reset(dones)
 
-    def compute_returns(self, last_critic_obs, last_encoder_obs=None):
-        """
-        Compute returns for the collected rollout.
-        
-        Args:
-            last_critic_obs: Last critic observations
-            last_encoder_obs: Last encoder observations (for context), if None uses last_critic_obs
-        """
-        # Use encoder observations for value computation if available
-        if last_encoder_obs is not None:
-            last_values = self.policy.evaluate(last_critic_obs, actor_observations=last_encoder_obs).detach()
-        else:
-            last_values = self.policy.evaluate(last_critic_obs).detach()
+    def compute_returns(self, last_critic_obs):
+        # compute value for the last step
+        last_values = self.policy.evaluate(last_critic_obs).detach()
         self.storage.compute_returns(
             last_values, self.gamma, self.lam, normalize_advantage=not self.normalize_advantage_per_mini_batch
         )
@@ -246,7 +189,6 @@ class PPO:
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_entropy = 0
-        mean_kl = 0
         # -- RND loss
         if self.rnd:
             mean_rnd_loss = 0
@@ -266,8 +208,7 @@ class PPO:
 
         # iterate over batches
         for (
-            encoder_obs_batch,
-            policy_obs_batch,
+            obs_batch,
             critic_obs_batch,
             actions_batch,
             target_values_batch,
@@ -285,7 +226,7 @@ class PPO:
             # we start with 1 and increase it if we use symmetry augmentation
             num_aug = 1
             # original batch size
-            original_batch_size = encoder_obs_batch.shape[0]
+            original_batch_size = obs_batch.shape[0]
 
             # check if we should normalize advantages per mini batch
             if self.normalize_advantage_per_mini_batch:
@@ -297,18 +238,14 @@ class PPO:
                 # augmentation using symmetry
                 data_augmentation_func = self.symmetry["data_augmentation_func"]
                 # returned shape: [batch_size * num_aug, ...]
-                encoder_obs_batch, actions_batch = data_augmentation_func(
-                    obs=encoder_obs_batch, actions=actions_batch, env=self.symmetry["_env"], obs_type="policy"
-                )
-                # Also augment policy_obs_batch
-                policy_obs_batch, _ = data_augmentation_func(
-                    obs=policy_obs_batch, actions=None, env=self.symmetry["_env"], obs_type="policy"
+                obs_batch, actions_batch = data_augmentation_func(
+                    obs=obs_batch, actions=actions_batch, env=self.symmetry["_env"], obs_type="policy"
                 )
                 critic_obs_batch, _ = data_augmentation_func(
                     obs=critic_obs_batch, actions=None, env=self.symmetry["_env"], obs_type="critic"
                 )
                 # compute number of augmentations per sample
-                num_aug = int(encoder_obs_batch.shape[0] / original_batch_size)
+                num_aug = int(obs_batch.shape[0] / original_batch_size)
                 # repeat the rest of the batch
                 # -- actor
                 old_actions_log_prob_batch = old_actions_log_prob_batch.repeat(num_aug, 1)
@@ -319,16 +256,11 @@ class PPO:
 
             # Recompute actions log prob and entropy for current batch of transitions
             # Note: we need to do this because we updated the policy with the new parameters
-            # Use the stored policy_obs_batch directly from rollout storage
-            
-            # Compute encoder latent once and reuse for both actor and critic
-            encoder_latent_batch = self.policy.get_encoder_latent(encoder_obs_batch)
-            
             # -- actor
-            self.policy.act(encoder_obs_batch, policy_obs_batch, encoder_latent=encoder_latent_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
+            self.policy.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
             actions_log_prob_batch = self.policy.get_actions_log_prob(actions_batch)
             # -- critic
-            value_batch = self.policy.evaluate(critic_obs_batch, encoder_latent=encoder_latent_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
+            value_batch = self.policy.evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
             # -- entropy
             # we only keep the entropy of the first augmentation (the original one)
             mu_batch = self.policy.action_mean[:original_batch_size]
@@ -371,9 +303,6 @@ class PPO:
                     # Update the learning rate for all parameter groups
                     for param_group in self.optimizer.param_groups:
                         param_group["lr"] = self.learning_rate
-                    
-                    # Store KL divergence for logging
-                    mean_kl += kl_mean.item()
 
             # Surrogate loss
             ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
@@ -402,19 +331,14 @@ class PPO:
                 # if we did augmentation before then we don't need to augment again
                 if not self.symmetry["use_data_augmentation"]:
                     data_augmentation_func = self.symmetry["data_augmentation_func"]
-                    encoder_obs_batch, _ = data_augmentation_func(
-                        obs=encoder_obs_batch, actions=None, env=self.symmetry["_env"], obs_type="policy"
-                    )
-                    # Also augment policy_obs_batch for symmetry
-                    policy_obs_batch, _ = data_augmentation_func(
-                        obs=policy_obs_batch, actions=None, env=self.symmetry["_env"], obs_type="policy"
+                    obs_batch, _ = data_augmentation_func(
+                        obs=obs_batch, actions=None, env=self.symmetry["_env"], obs_type="policy"
                     )
                     # compute number of augmentations per sample
-                    num_aug = int(encoder_obs_batch.shape[0] / original_batch_size)
+                    num_aug = int(obs_batch.shape[0] / original_batch_size)
 
                 # actions predicted by the actor for symmetrically-augmented observations
-                # Use the stored policy_obs_batch directly
-                mean_actions_batch = self.policy.act_inference(encoder_obs_batch.detach().clone(), policy_obs_batch.detach().clone())
+                mean_actions_batch = self.policy.act_inference(obs_batch.detach().clone())
 
                 # compute the symmetrically augmented actions
                 # note: we are assuming the first augmentation is the original one.
@@ -482,7 +406,6 @@ class PPO:
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_entropy /= num_updates
-        mean_kl /= num_updates
         # -- For RND
         if mean_rnd_loss is not None:
             mean_rnd_loss /= num_updates
@@ -497,7 +420,6 @@ class PPO:
             "value_function": mean_value_loss,
             "surrogate": mean_surrogate_loss,
             "entropy": mean_entropy,
-            "kl_divergence": mean_kl,
         }
         if self.rnd:
             loss_dict["rnd"] = mean_rnd_loss

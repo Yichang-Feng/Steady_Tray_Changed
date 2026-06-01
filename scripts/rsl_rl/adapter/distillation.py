@@ -59,6 +59,7 @@ class Distillation:
         dagger_schedule_type="linear",  # "linear" or "exponential"
         # Distributed training parameters
         multi_gpu_cfg: dict | None = None,
+        **kwargs,
     ):
         """
         Initialize the adapter distillation algorithm.

@@ -194,12 +194,12 @@ class ObjectObservationsCfg(ObservationsCfg):
                 "lin_vel_scale": 0.5,
                 "gravity_scale": 1.0,
             },
-            delay_min_lag=0,        # Minimum delay in steps (0 = no delay)
-            delay_max_lag=3,        # Maximum delay in steps (3 steps x 0.02s = 0.06s)
-            delay_per_env=True,     # Each environment has independent delay
-            delay_hold_prob=0.2,    # 20% chance to keep previous lag
-            delay_update_period=10, # Update lag every 10 steps (0.2s)
-            delay_per_env_phase=True, # Stagger lag updates across environments
+            # delay_min_lag=0,        # Minimum delay in steps (0 = no delay)
+            # delay_max_lag=3,        # Maximum delay in steps (3 steps x 0.02s = 0.06s)
+            # delay_per_env=True,     # Each environment has independent delay
+            # delay_hold_prob=0.2,    # 20% chance to keep previous lag
+            # delay_update_period=10, # Update lag every 10 steps (0.2s)
+            # delay_per_env_phase=True, # Stagger lag updates across environments
         )
         
         def __post_init__(self):

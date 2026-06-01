@@ -174,6 +174,7 @@ class G1PPORunnerCfg(BasePPORunnerCfg):
         },
     )
 
+
 @configclass
 class G1AdapterSteadyTrayRunnerCfg(RslRlOnPolicyRunnerCfg):
     """
@@ -222,7 +223,7 @@ class G1AdapterSteadyTrayRunnerCfg(RslRlOnPolicyRunnerCfg):
         clamp_residual=None,          # Clamping range for residual action(±clamp_residual).
 
         # FiLM adapter parameters
-        clamp_gamma=1.5,         # Relaxed from 2.0 to allow more modulation
+        clamp_gamma=1.1,         # Relaxed from 2.0 to allow more modulation
         adapter_hidden=128,      # Increased from 64 for more expressiveness
     )
     
@@ -296,7 +297,7 @@ class G1AdapterDistillationRunnerCfg(RslRlOnPolicyRunnerCfg):
         clamp_residual=None,          # Clamping range for residual action(±clamp_residual).
 
         # FiLM adapter parameters
-        clamp_gamma=3.0,         # Relaxed from 2.0 to allow more modulation
+        clamp_gamma=2.0,         # Relaxed from 2.0 to allow more modulation
         adapter_hidden=128,      # Increased from 64 for more expressiveness
     )
     
