@@ -111,6 +111,58 @@ class TrayEventCfg(EventCfg):
         },
     )
 
+@configclass
+class TrayObservationsCfg(ObservationsCfg):
+    """Configuration for observations in the steady tray environment (for Residual Adapter)."""
+
+    @configclass
+    class EncoderCfg(ObsGroup):
+        """喂给残差网络 Transformer 编码器的时间序列观测"""
+        
+        # 基础机器人观测
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, scale=0.2, noise=Unoise(n_min=-0.2, n_max=0.2), clip=(-25.0, 25.0))
+        projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))
+        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05, noise=Unoise(n_min=-1.5, n_max=1.5), clip=(-100.0, 100.0))
+        last_action = ObsTerm(func=mdp.last_action)
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1), clip=(-3.0, 3.0))
+
+        # 【核心输入】：托盘相对于机器人的位姿与姿态投影
+        tray_projected_gravity = ObsTerm(func=mdp.projected_gravity, params={"asset_cfg": SceneEntityCfg("tray")}, noise=Unoise(n_min=-0.05, n_max=0.05))
+        tray_pos_rel = ObsTerm(func=mdp.object_rel_pos, params={"sensor_cfg": SceneEntityCfg("robot_transform"), "target_frame_name": "tray"}, noise=Unoise(n_min=-0.03, n_max=0.03), clip=(-1.0, 1.0))
+
+        def __post_init__(self):
+            self.history_length = 32
+            self.enable_corruption = True
+            # 【关键】：必须为 False，确保时序维度存在 (Seq_len = 32)
+            self.flatten_history_dim = False 
+
+    encoder: EncoderCfg = EncoderCfg()
+
+    @configclass
+    class AdaptedCriticCfg(ObsGroup):
+        """包含特权信息的评论家网络观测"""
+        
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, scale=0.2, clip=(-25.0, 25.0))  
+        projected_gravity = ObsTerm(func=mdp.projected_gravity)
+        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05, clip=(-100.0, 100.0))
+        last_action = ObsTerm(func=mdp.last_action)
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, clip=(-3.0, 3.0))
+
+        tray_projected_gravity = ObsTerm(func=mdp.projected_gravity, params={"asset_cfg": SceneEntityCfg("tray")})
+        tray_pos_rel = ObsTerm(func=mdp.object_rel_pos, params={"sensor_cfg": SceneEntityCfg("robot_transform"), "target_frame_name": "tray"}, clip=(-1.0, 1.0))
+        tray_ang_vel_rel = ObsTerm(func=mdp.object_rel_ang_vel, params={"target_asset_cfg": SceneEntityCfg("tray"), "reference_asset_cfg": SceneEntityCfg("robot", body_names="torso_link")}, scale=0.2, clip=(-50.0, 50.0))
+        tray_lin_vel_rel = ObsTerm(func=mdp.object_rel_lin_vel, params={"target_asset_cfg": SceneEntityCfg("tray"), "reference_asset_cfg": SceneEntityCfg("robot", body_names="torso_link")}, scale=0.5, clip=(-10.0, 10.0))
+        tray_holder_contact_forces = ObsTerm(func=mdp.tray_holder_contact_forces, params={"sensor_cfg": SceneEntityCfg("tray_contact_sensor")}, scale=0.1, clip=(-50.0, 50.0))
+
+        def __post_init__(self):
+            self.history_length = 5
+            self.flatten_history_dim = True
+
+    critic: AdaptedCriticCfg = AdaptedCriticCfg()
 
 @configclass
 class TrayRewardsCfg(RewardsCfg):
@@ -215,9 +267,9 @@ class SteadyTrayEnvCfg(RobotEnvCfg):
 
     scene: TraySceneCfg = TraySceneCfg(num_envs=4096, env_spacing=2.5, replicate_physics=True)
     events: TrayEventCfg = TrayEventCfg()
+    observations: TrayObservationsCfg = TrayObservationsCfg()  
     rewards: TrayRewardsCfg = TrayRewardsCfg()
     terminations: TrayTerminationsCfg = TrayTerminationsCfg()
-
 
 @configclass
 class TrayTerminationsPlayCfg(TerminationsCfg):
