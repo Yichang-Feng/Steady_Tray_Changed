@@ -40,7 +40,7 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": f"{__name__}.steady_tray_env_cfg:SteadyTrayEnvCfg",
         "play_env_cfg_entry_point": f"{__name__}.steady_tray_env_cfg:SteadyTrayPlayEnvCfg",
-        "rsl_rl_cfg_entry_point": f"steadytray.tasks.agents.rsl_rl_ppo_cfg:BasePPORunnerCfg",
+        "rsl_rl_cfg_entry_point": f"steadytray.tasks.agents.rsl_rl_ppo_cfg:G1AdapterSteadyTrayRunnerCfg",
     },
 )
 

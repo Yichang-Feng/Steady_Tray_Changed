@@ -221,36 +221,18 @@ def main():
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
+        raw_obs = env.unwrapped.obs_buf
         # run everything in inference mode
         with torch.inference_mode():
-            # agent stepping - different handling for distillation, adapter vs standard policy
+            # agent stepping
             if policy_type == "distillation":
-                # For distillation policy - observations are structured as a dictionary with specific keys
-                # Use student encoder for inference (teacher is only for training)
-                if isinstance(obs, dict):
-                    student_encoder_obs = obs["student_encoder"]
-                    policy_obs = obs["policy"]
-                    # Call distillation policy with student encoder and policy observations
-                    actions = policy.__call__(student_encoder_obs, policy_obs)
-                else:
-                    raise ValueError("Expected dictionary observations for distillation policy")
+                actions = policy.__call__(raw_obs["student_encoder"], raw_obs["policy"])
             elif policy_type == "adapter":
-                # For adapter policy - observations are structured as a dictionary with specific keys
-                if isinstance(obs, dict):
-                    encoder_obs = obs["encoder"]
-                    policy_obs = obs["policy"]
-                    # Call adapter policy with encoder and policy observations
-                    actions = policy.__call__(encoder_obs, policy_obs)
-                else:
-                    raise ValueError("Expected dictionary observations for adapter policy")
+                encoder_obs = raw_obs["encoder"]
+                policy_obs = raw_obs["policy"]
+                actions = policy.__call__(encoder_obs, policy_obs)
             else:
-                # For standard policy - single observation tensor passed directly to policy
-                if hasattr(obs, "keys") and "policy" in obs.keys():
-                    policy_obs = obs["policy"]
-                else:
-                    policy_obs = obs
-                    
-                actions = policy.__call__(policy_obs)
+                actions = policy.__call__(obs)
                 
             # env stepping
             obs, _, _, _ = env.step(actions)

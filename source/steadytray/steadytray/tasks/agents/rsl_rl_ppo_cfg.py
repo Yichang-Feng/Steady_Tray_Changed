@@ -220,7 +220,7 @@ class G1AdapterSteadyTrayRunnerCfg(RslRlOnPolicyRunnerCfg):
         
         # Residual adapter parameters
         residual_hidden_dims=[512, 256, 128],  # MLP architecture for residual actions
-        clamp_residual=None,          # Clamping range for residual action(±clamp_residual).
+        clamp_residual=0.1,          # Clamping range for residual action(±clamp_residual).
 
         # FiLM adapter parameters
         clamp_gamma=1.1,         # Relaxed from 2.0 to allow more modulation
@@ -274,7 +274,7 @@ class G1AdapterDistillationRunnerCfg(RslRlOnPolicyRunnerCfg):
     # Uses same config as AdaptedActorCritic, just changes class_name to AdaptedStudentTeacher
     policy = RslRlAdaptedActorCriticCfg(
         class_name="AdaptedStudentTeacher",
-        adapter_type="film",  # "film" for FiLM adapters, "residual" for residual action adapter
+        adapter_type="residual",  # "film" for FiLM adapters, "residual" for residual action adapter
         init_noise_std=1e-3,
         
         # Frozen base actor architecture (must match pre-trained model)
@@ -294,7 +294,7 @@ class G1AdapterDistillationRunnerCfg(RslRlOnPolicyRunnerCfg):
 
         # Residual adapter parameters
         residual_hidden_dims=[512, 256, 128],  # MLP architecture for residual actions
-        clamp_residual=None,          # Clamping range for residual action(±clamp_residual).
+        clamp_residual=0.1,          # Clamping range for residual action(±clamp_residual).
 
         # FiLM adapter parameters
         clamp_gamma=2.0,         # Relaxed from 2.0 to allow more modulation

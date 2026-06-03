@@ -15,7 +15,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from .locomotion_env_cfg import RobotEnvCfg, RobotSceneCfg, EventCfg, RewardsCfg, TerminationsCfg, ObservationsCfg
 
 # Initial positions for the tray and tray holders relative to the robot's pelvis
-TRAY_INITIAL_POS = [0.30225, 0.0, 0.167]
+TRAY_INITIAL_POS = [0.25, 0.0, 0.167]
 
 
 @configclass
@@ -156,7 +156,7 @@ class TrayObservationsCfg(ObservationsCfg):
         tray_pos_rel = ObsTerm(func=mdp.object_rel_pos, params={"sensor_cfg": SceneEntityCfg("robot_transform"), "target_frame_name": "tray"}, clip=(-1.0, 1.0))
         tray_ang_vel_rel = ObsTerm(func=mdp.object_rel_ang_vel, params={"target_asset_cfg": SceneEntityCfg("tray"), "reference_asset_cfg": SceneEntityCfg("robot", body_names="torso_link")}, scale=0.2, clip=(-50.0, 50.0))
         tray_lin_vel_rel = ObsTerm(func=mdp.object_rel_lin_vel, params={"target_asset_cfg": SceneEntityCfg("tray"), "reference_asset_cfg": SceneEntityCfg("robot", body_names="torso_link")}, scale=0.5, clip=(-10.0, 10.0))
-        tray_holder_contact_forces = ObsTerm(func=mdp.tray_holder_contact_forces, params={"sensor_cfg": SceneEntityCfg("tray_contact_sensor")}, scale=0.1, clip=(-50.0, 50.0))
+        rubber_hand_contact_forces = ObsTerm(func=mdp.tray_holder_contact_forces, params={"sensor_cfg": SceneEntityCfg("tray_contact_sensor")}, scale=0.1, clip=(-50.0, 50.0))
 
         def __post_init__(self):
             self.history_length = 5
