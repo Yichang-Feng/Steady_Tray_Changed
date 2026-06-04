@@ -5,6 +5,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensorCfg, FrameTransformerCfg
 from isaaclab.utils import configclass
+# from isaaclab.managers import CurriculumTermCfg as CurriculumCfg
 from steadytray.tasks import mdp
 
 from .compat import DoneTerm
@@ -30,10 +31,10 @@ class TraySceneCfg(RobotSceneCfg):
             activate_contact_sensors=True,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.4),
-            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.003),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0), metallic=0.2),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=1.5, 
+                static_friction=1.2, 
                 dynamic_friction=1.0,
                 restitution=0.0
             ),
@@ -69,9 +70,9 @@ class TrayEventCfg(EventCfg):
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("tray"),
-            "static_friction_range": (1.2, 2.0),
-            "dynamic_friction_range": (1.0, 1.8),
-            "restitution_range": (0.0, 0.05),
+            "static_friction_range": (0.5, 1.0),
+            "dynamic_friction_range": (0.4, 0.9),
+            "restitution_range": (0.0, 0.5),
             "num_buckets": 256,
         },
     )
@@ -81,7 +82,7 @@ class TrayEventCfg(EventCfg):
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("tray"),
-            "mass_distribution_params": (0.3, 0.7),
+            "mass_distribution_params": (0.2, 0.7),
             "operation": "abs",
         },
     )
@@ -93,12 +94,12 @@ class TrayEventCfg(EventCfg):
             "base_asset_cfg": SceneEntityCfg("robot", body_names="pelvis"),
             "target_asset_cfg": SceneEntityCfg("tray"),
             "relative_pose": {
-                "x": TRAY_INITIAL_POS[0],
-                "y": TRAY_INITIAL_POS[1],
-                "z": TRAY_INITIAL_POS[2],
-                "roll": 0.0,
-                "pitch": 0.0,
-                "yaw": 0.0,
+                "x": (TRAY_INITIAL_POS[0] - 0.03, TRAY_INITIAL_POS[0] + 0.03),
+                "y": (TRAY_INITIAL_POS[1] - 0.03, TRAY_INITIAL_POS[1] + 0.03),
+                "z": (TRAY_INITIAL_POS[2], TRAY_INITIAL_POS[2] + 0.05),
+                "roll": (-0, 0),
+                "pitch": (-0, 0),
+                "yaw": (-0.1, 0.1),
             },
             "relative_velocity": {
                 "x": 0.0,
@@ -108,6 +109,44 @@ class TrayEventCfg(EventCfg):
                 "pitch": 0.0,
                 "yaw": 0.0,
             },
+        },
+    )
+
+    # push_tray = EventTerm(
+    #     func=mdp.push_by_setting_velocity,
+    #     mode="interval",
+    #     interval_range_s=(2.0, 4.0),
+    #     params={
+    #         "velocity_range": {
+    #             "x": (-0.0, 0.0), 
+    #             "y": (-0.2, 0.2), 
+    #             "roll": (-0.0, 0.0), 
+    #             "pitch": (-0.0, 0.0),
+    #         },
+    #         'asset_cfg': SceneEntityCfg("tray")
+    #     },
+    # )
+
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(2.0, 5.0),
+        params={
+            "velocity_range": {
+                "x": (-0.1, 0.1), 
+                "y": (-0.1, 0.1), 
+            },
+            'asset_cfg': SceneEntityCfg("robot", body_names="torso_link") 
+        },
+    )
+
+    random_robot_mass = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
+            "mass_distribution_params": (0.9, 1.1),
+            "operation": "scale",
         },
     )
 
@@ -245,6 +284,11 @@ class TrayRewardsCfg(RewardsCfg):
         params={"asset_cfg": SceneEntityCfg("robot")}
     )
 
+# @configclass
+# class TrayCurriculumCfg(CurriculumCfg):
+#     """Configuration for curriculum in the steady tray environment."""
+#     lin_vel_cmd_levels = None
+#     ang_vel_cmd_levels = None
 
 @configclass
 class TrayTerminationsCfg(TerminationsCfg):
@@ -260,6 +304,17 @@ class TrayTerminationsCfg(TerminationsCfg):
         track_only_delay=1.0,
     )
 
+    base_height = DoneTerm(
+        func=mdp.root_height_below_minimum, 
+        params={"minimum_height": 0.4},
+        track_only=False
+    )
+    bad_orientation = DoneTerm(
+        func=mdp.bad_orientation, 
+        params={"limit_angle": 0.7, "asset_cfg": SceneEntityCfg("robot", body_names="torso_link")},
+        track_only=False
+    )
+
 
 @configclass
 class SteadyTrayEnvCfg(RobotEnvCfg):
@@ -270,6 +325,7 @@ class SteadyTrayEnvCfg(RobotEnvCfg):
     observations: TrayObservationsCfg = TrayObservationsCfg()  
     rewards: TrayRewardsCfg = TrayRewardsCfg()
     terminations: TrayTerminationsCfg = TrayTerminationsCfg()
+    # curriculum: TrayCurriculumCfg = TrayCurriculumCfg()
 
 @configclass
 class TrayTerminationsPlayCfg(TerminationsCfg):

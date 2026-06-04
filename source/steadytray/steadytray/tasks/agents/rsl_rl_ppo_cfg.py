@@ -242,7 +242,7 @@ class G1AdapterSteadyTrayRunnerCfg(RslRlOnPolicyRunnerCfg):
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
-    
+    clip_obs = 100.0
     clip_actions = 100.0
 
 

@@ -324,109 +324,132 @@ class CombinedCameraObjectObservations(ManagerTermBase):
 
     def __init__(
         self,
-        cfg: SceneEntityCfg,
+        cfg,
         env: ManagerBasedRLEnv,
-        camera_sensor_cfg: SceneEntityCfg = SceneEntityCfg("object_camera_transform"),
-        object_asset_cfg: SceneEntityCfg = SceneEntityCfg("object"),
-        target_frame_name: str = "object",
-        scale_event_term_name: str = "random_object_scale",
-        # Enable/disable individual components
-        include_pos: bool = True,
-        include_quat: bool = True,
-        # Individual scaling factors
-        pos_scale: float = 1.0,
-        quat_scale: float = 1.0,
-        # Individual clipping ranges (None = no clipping)
-        pos_clip: tuple[float, float] | None = None,
-        quat_clip: tuple[float, float] | None = None,
-        # Individual noise configurations
-        pos_noise: NoiseCfg | None = None,
-        quat_noise_std: float = 0.0,
+        *args,
+        **kwargs
     ):
-        # Call parent constructor
+        # 调用父类构造函数
         super().__init__(cfg, env)
 
-        # Resolve SceneEntityCfg objects
+        # --- 核心修复：从 cfg.params 动态读取你传入的参数，替代原有的默认参数陷阱 ---
+        params = cfg.params or {}
+        
+        # 如果 params 中没有传入，才回退到 object 相关的默认值
+        camera_sensor_cfg = params.get("camera_sensor_cfg", SceneEntityCfg("object_camera_transform"))
+        object_asset_cfg = params.get("object_asset_cfg", SceneEntityCfg("object"))
+
+        # 此时 resolve 的就是正确的 tray_camera_transform 和 tray
         camera_sensor_cfg.resolve(env.scene)
         object_asset_cfg.resolve(env.scene)
 
         self.camera_sensor_cfg = camera_sensor_cfg
         self.object_asset_cfg = object_asset_cfg
-        self.target_frame_name = target_frame_name
-        self.scale_event_term_name = scale_event_term_name
+        self.target_frame_name = params.get("target_frame_name", "object")
+        self.scale_event_term_name = params.get("scale_event_term_name", "random_object_scale")
 
-        self.include_pos = include_pos
-        self.include_quat = include_quat
+        self.include_pos = params.get("include_pos", True)
+        self.include_quat = params.get("include_quat", True)
 
-        self.pos_scale = pos_scale
-        self.quat_scale = quat_scale
+        self.pos_scale = params.get("pos_scale", 1.0)
+        self.quat_scale = params.get("quat_scale", 1.0)
 
-        self.pos_clip = pos_clip
-        self.quat_clip = quat_clip
+        self.pos_clip = params.get("pos_clip", None)
+        self.quat_clip = params.get("quat_clip", None)
 
-        self.pos_noise = pos_noise
-        self.quat_noise_std = quat_noise_std
+        self.pos_noise = params.get("pos_noise", None)
+        self.quat_noise_std = params.get("quat_noise_std", 0.0)
 
     def __call__(
-        self,
-        env: ManagerBasedRLEnv,
-        # These parameters must match __init__ for IsaacLab's parameter validation
-        camera_sensor_cfg: SceneEntityCfg | None = None,
-        object_asset_cfg: SceneEntityCfg | None = None,
-        target_frame_name: str | None = None,
-        scale_event_term_name: str | None = None,
-        include_pos: bool | None = None,
-        include_quat: bool | None = None,
-        pos_scale: float | None = None,
-        quat_scale: float | None = None,
-        pos_clip: tuple[float, float] | None = None,
-        quat_clip: tuple[float, float] | None = None,
-        pos_noise: NoiseCfg | None = None,
-        quat_noise_std: float | None = None,
-    ) -> torch.Tensor:
-        observations = []
+            self,
+            env: ManagerBasedRLEnv,
+            camera_sensor_cfg: SceneEntityCfg | None = None,
+            object_asset_cfg: SceneEntityCfg | None = None,
+            target_frame_name: str | None = None,
+            scale_event_term_name: str | None = None,
+            include_pos: bool | None = None,
+            include_quat: bool | None = None,
+            pos_scale: float | None = None,
+            quat_scale: float | None = None,
+            pos_clip: tuple[float, float] | None = None,
+            quat_clip: tuple[float, float] | None = None,
+            pos_noise: NoiseCfg | None = None,
+            quat_noise_std: float | None = None,
+        ) -> torch.Tensor:
+            observations = []
 
-        # 1. Object relative position (top surface) in camera frame (3D)
-        if self.include_pos:
-            pos_rel = object_rel_pos_top(
-                env,
-                sensor_cfg=self.camera_sensor_cfg,
-                target_frame_name=self.target_frame_name,
-                object_cfg=self.object_asset_cfg,
-                scale_event_term_name=self.scale_event_term_name
-            )
-            # Apply noise first (if configured)
-            if self.pos_noise is not None:
-                pos_rel = self.pos_noise.func(pos_rel, self.pos_noise)
-            # Then clip
-            if self.pos_clip is not None:
-                pos_rel = torch.clamp(pos_rel, self.pos_clip[0], self.pos_clip[1])
-            # Then scale
-            pos_rel = pos_rel * self.pos_scale
-            observations.append(pos_rel)
+        # --- 新增：相机相对于 Torso 的固定位姿 (由 URDF 参数解析) ---
+            # 你的平移参数: xyz="0.0576235 0.01753 0.42987"
+            cam_offset_pos = torch.tensor([0.0576235, 0.01753, 0.42987], device=env.device).expand(env.num_envs, -1)
+            
+            # 你的旋转参数: rpy="0 0.8307767239493009 0" (沿 Y 轴的 Pitch 角)
+            # 转换为四元数 [w, x, y, z]: cos(pitch/2) = 0.9149596, sin(pitch/2) = 0.4035653
+            cam_offset_quat = torch.tensor([0.9149596, 0.0, 0.4035653, 0.0], device=env.device).expand(env.num_envs, -1)
+            cam_offset_quat_inv = math_utils.quat_inv(cam_offset_quat)
 
-        # 2. Object relative quaternion in camera frame (4D)
-        if self.include_quat:
-            quat_rel = object_rel_quat_with_noise(
-                env,
-                sensor_cfg=self.camera_sensor_cfg,
-                target_frame_name=self.target_frame_name,
-                noise_std=self.quat_noise_std
-            )
-            # Clip (if configured)
-            if self.quat_clip is not None:
-                quat_rel = torch.clamp(quat_rel, self.quat_clip[0], self.quat_clip[1])
-            # Then scale
-            quat_rel = quat_rel * self.quat_scale
-            observations.append(quat_rel)
+            # 1. Object relative position (top surface) in camera frame (3D)
+            if self.include_pos:
+                # 先获取 Tray top 相对于 torso_link 的物理位置 (3D)
+                pos_rel_torso = object_rel_pos_top(
+                    env,
+                    sensor_cfg=self.camera_sensor_cfg,
+                    target_frame_name=self.target_frame_name,
+                    object_cfg=self.object_asset_cfg,
+                    scale_event_term_name=self.scale_event_term_name
+                )
+                
+                # --- 核心：坐标系平移与旋转变换 (Torso -> Camera) ---
+                # 公式: P_cam = R_cam_to_torso^-1 * (P_torso - P_cam_offset)
+                pos_rel_cam = math_utils.quat_apply(cam_offset_quat_inv, pos_rel_torso - cam_offset_pos)
+                pos_rel = pos_rel_cam
 
-        # Concatenate all enabled observations
-        if observations:
-            combined = torch.cat(observations, dim=-1)
-        else:
-            combined = torch.zeros(env.num_envs, 0, device=env.device)
+                # 注入感知噪声与裁剪
+                if self.pos_noise is not None:
+                    pos_rel = self.pos_noise.func(pos_rel, self.pos_noise)
+                if self.pos_clip is not None:
+                    pos_rel = torch.clamp(pos_rel, self.pos_clip[0], self.pos_clip[1])
+                pos_rel = pos_rel * self.pos_scale
+                observations.append(pos_rel)
 
-        return combined
+            # 2. Object relative quaternion in camera frame (4D)
+            if self.include_quat:
+                # 获取无噪声的 Tray 相对于 torso_link 的旋转
+                quat_rel_torso = object_rel_quat(
+                    env, 
+                    sensor_cfg=self.camera_sensor_cfg, 
+                    target_frame_name=self.target_frame_name
+                )
+                
+                # --- 核心：旋转变换 (Torso -> Camera) ---
+                # 公式: Q_cam = Q_cam_offset^-1 * Q_torso
+                quat_rel_cam = math_utils.quat_mul(cam_offset_quat_inv, quat_rel_torso)
+
+                # 注入四元数白噪声 (修正了原代码的逻辑，确保噪声施加在正确的坐标系下)
+                if self.quat_noise_std is not None and self.quat_noise_std > 0.0:
+                    random_axis = torch.randn(env.num_envs, 3, device=env.device)
+                    random_axis = random_axis / (torch.norm(random_axis, dim=-1, keepdim=True) + 1e-8)
+                    random_angles = torch.randn(env.num_envs, device=env.device) * self.quat_noise_std
+                    half_angles = random_angles / 2.0
+                    noise_quat = torch.zeros(env.num_envs, 4, device=env.device)
+                    noise_quat[:, 0] = torch.cos(half_angles)
+                    noise_quat[:, 1:] = torch.sin(half_angles).unsqueeze(-1) * random_axis
+                    
+                    quat_rel = math_utils.quat_mul(noise_quat, quat_rel_cam)
+                else:
+                    quat_rel = quat_rel_cam
+
+                if self.quat_clip is not None:
+                    quat_rel = torch.clamp(quat_rel, self.quat_clip[0], self.quat_clip[1])
+                quat_rel = quat_rel * self.quat_scale
+                observations.append(quat_rel)
+
+            # Concatenate all enabled observations
+            if observations:
+                combined = torch.cat(observations, dim=-1)
+            else:
+                combined = torch.zeros(env.num_envs, 0, device=env.device)
+
+            return combined
 
 
 class CombinedObjectObservationsDict(ManagerTermBase):

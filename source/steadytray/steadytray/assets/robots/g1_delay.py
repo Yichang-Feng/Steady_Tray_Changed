@@ -30,7 +30,7 @@ DAMPING_4010 = 2.0 * DAMPING_RATIO * ARMATURE_4010 * NATURAL_FREQ  # 1.068141502
 
 G1_DELAY_CFG = unitree.UnitreeArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path=f"{UNITREE_MODEL_DIR}/g1_29dof/g1_29dof.usd",
+        usd_path=f"{UNITREE_MODEL_DIR}/resources/unitree_g1/g1_29dof/g1_29dof.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,

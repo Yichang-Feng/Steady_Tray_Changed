@@ -76,3 +76,14 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"steadytray.tasks.agents.rsl_rl_ppo_cfg:BasePPORunnerCfg",
     },
 )
+
+gym.register(
+    id="G1-Steady-Tray-Distillation",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.steady_tray_distill_env_cfg:SteadyTrayDistillEnvCfg",
+        "play_env_cfg_entry_point": f"{__name__}.steady_tray_distill_env_cfg:SteadyTrayDistillPlayEnvCfg",
+        "rsl_rl_cfg_entry_point": f"steadytray.tasks.agents.rsl_rl_ppo_cfg:G1AdapterDistillationRunnerCfg",
+    },
+)
